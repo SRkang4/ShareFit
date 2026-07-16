@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'package:top_snackbar_flutter/top_snack_bar.dart';
 import 'main_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -18,11 +18,12 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
+  static const pointColor = Color(0xFF5B5FFF);
+
   void _signup() {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
-    final confirmPassword =
-    _confirmPasswordController.text.trim();
+    final confirmPassword = _confirmPasswordController.text.trim();
     final name = _nameController.text.trim();
 
     if (email.isEmpty) {
@@ -30,16 +31,25 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
-    final emailRegex =
-    RegExp(r'^[^@]+@[^@]+\.[^@]+');
+    final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+');
 
     if (!emailRegex.hasMatch(email)) {
       _showError('올바른 이메일 형식이 아닙니다.');
       return;
     }
 
+    if (password.isEmpty) {
+      _showError('비밀번호를 입력해주세요.');
+      return;
+    }
+
     if (password.length < 6) {
       _showError('비밀번호는 6자 이상이어야 합니다.');
+      return;
+    }
+
+    if (confirmPassword.isEmpty) {
+      _showError('비밀번호를 다시 입력해주세요.');
       return;
     }
 
@@ -61,6 +71,55 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
+  void _showError(String message) {
+    showTopSnackBar(
+      Overlay.of(context),
+      Material(
+        color: Colors.transparent,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 18,
+            vertical: 16,
+          ),
+          decoration: BoxDecoration(
+            color: pointColor,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.info_outline_rounded,
+                color: Colors.white,
+                size: 22,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      displayDuration: const Duration(seconds: 2),
+    );
+  }
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -70,15 +129,6 @@ class _SignupScreenState extends State<SignupScreen> {
     super.dispose();
   }
 
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
   Widget _title(String text) {
     return Text(
       text,
@@ -86,6 +136,7 @@ class _SignupScreenState extends State<SignupScreen> {
         fontSize: 14,
         fontWeight: FontWeight.w800,
         color: Color(0xFF111111),
+        letterSpacing: -0.2,
       ),
     );
   }
@@ -94,13 +145,23 @@ class _SignupScreenState extends State<SignupScreen> {
     required TextEditingController controller,
     required String hint,
     bool obscure = false,
+    TextInputType? keyboardType,
+    TextInputAction? textInputAction,
+    VoidCallback? onSubmitted,
     Widget? suffix,
   }) {
     return TextField(
       controller: controller,
       obscureText: obscure,
+      keyboardType: keyboardType,
+      textInputAction: textInputAction,
+      onSubmitted: (_) => onSubmitted?.call(),
       decoration: InputDecoration(
         hintText: hint,
+        hintStyle: const TextStyle(
+          color: Color(0xFFB0B0B0),
+          fontWeight: FontWeight.w600,
+        ),
         filled: true,
         fillColor: const Color(0xFFF7F7F8),
         contentPadding: const EdgeInsets.symmetric(
@@ -118,8 +179,6 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const pointColor = Color(0xFF5B5FFF);
-
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -130,133 +189,163 @@ class _SignupScreenState extends State<SignupScreen> {
           icon: const Icon(
             Icons.arrow_back_ios_new_rounded,
             color: Color(0xFF111111),
+            size: 20,
           ),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            Navigator.pop(context);
+          },
         ),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '회원가입',
-                style: TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF111111),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight,
                 ),
-              ),
+                child: IntrinsicHeight(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 28),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '회원가입',
+                          style: TextStyle(
+                            fontSize: 30,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF111111),
+                            letterSpacing: -0.8,
+                          ),
+                        ),
 
-              const SizedBox(height: 10),
+                        const SizedBox(height: 10),
 
-              const Text(
-                '친구들과 운동을 공유해보세요.',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF777777),
-                ),
-              ),
+                        const Text(
+                          '친구들과 운동을 공유해보세요.',
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.4,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF777777),
+                            letterSpacing: -0.2,
+                          ),
+                        ),
 
-              const SizedBox(height: 36),
+                        const SizedBox(height: 36),
 
-              _title('이메일'),
+                        _title('이메일'),
 
-              const SizedBox(height: 10),
+                        const SizedBox(height: 10),
 
-              _field(
-                controller: _emailController,
-                hint: '이메일을 입력하세요',
-              ),
+                        _field(
+                          controller: _emailController,
+                          hint: '이메일을 입력하세요',
+                          keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.next,
+                        ),
 
-              const SizedBox(height: 22),
+                        const SizedBox(height: 22),
 
-              _title('비밀번호'),
+                        _title('비밀번호'),
 
-              const SizedBox(height: 10),
+                        const SizedBox(height: 10),
 
-              _field(
-                controller: _passwordController,
-                hint: '비밀번호를 입력하세요',
-                obscure: _obscurePassword,
-                suffix: IconButton(
-                  icon: Icon(
-                    _obscurePassword
-                        ? Icons.visibility_off_rounded
-                        : Icons.visibility_rounded,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _obscurePassword = !_obscurePassword;
-                    });
-                  },
-                ),
-              ),
+                        _field(
+                          controller: _passwordController,
+                          hint: '비밀번호를 입력하세요',
+                          obscure: _obscurePassword,
+                          textInputAction: TextInputAction.next,
+                          suffix: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off_rounded
+                                  : Icons.visibility_rounded,
+                              color: const Color(0xFF999999),
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _obscurePassword = !_obscurePassword;
+                              });
+                            },
+                          ),
+                        ),
 
-              const SizedBox(height: 22),
+                        const SizedBox(height: 22),
 
-              _title('비밀번호 확인'),
+                        _title('비밀번호 확인'),
 
-              const SizedBox(height: 10),
+                        const SizedBox(height: 10),
 
-              _field(
-                controller: _confirmPasswordController,
-                hint: '비밀번호를 다시 입력하세요',
-                obscure: _obscureConfirmPassword,
-                suffix: IconButton(
-                  icon: Icon(
-                    _obscureConfirmPassword
-                        ? Icons.visibility_off_rounded
-                        : Icons.visibility_rounded,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _obscureConfirmPassword =
-                      !_obscureConfirmPassword;
-                    });
-                  },
-                ),
-              ),
+                        _field(
+                          controller: _confirmPasswordController,
+                          hint: '비밀번호를 다시 입력하세요',
+                          obscure: _obscureConfirmPassword,
+                          textInputAction: TextInputAction.next,
+                          suffix: IconButton(
+                            icon: Icon(
+                              _obscureConfirmPassword
+                                  ? Icons.visibility_off_rounded
+                                  : Icons.visibility_rounded,
+                              color: const Color(0xFF999999),
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _obscureConfirmPassword =
+                                !_obscureConfirmPassword;
+                              });
+                            },
+                          ),
+                        ),
 
-              const SizedBox(height: 22),
+                        const SizedBox(height: 22),
 
-              _title('이름'),
+                        _title('이름'),
 
-              const SizedBox(height: 10),
+                        const SizedBox(height: 10),
 
-              _field(
-                controller: _nameController,
-                hint: '이름을 입력하세요',
-              ),
+                        _field(
+                          controller: _nameController,
+                          hint: '이름을 입력하세요',
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: _signup,
+                        ),
 
-              const SizedBox(height: 40),
+                        const Spacer(),
 
-              SizedBox(
-                width: double.infinity,
-                height: 58,
-                child: ElevatedButton(
-                  onPressed: _signup,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: pointColor,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(22),
+                        const SizedBox(height: 32),
+
+                        SizedBox(
+                          width: double.infinity,
+                          height: 58,
+                          child: ElevatedButton(
+                            onPressed: _signup,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: pointColor,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(22),
+                              ),
+                            ),
+                            child: const Text(
+                              '가입하기',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  child: const Text(
-                    '가입하기',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
                 ),
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
