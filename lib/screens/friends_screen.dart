@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../services/auth_service.dart';
+
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
 
@@ -10,23 +12,21 @@ class FriendsScreen extends StatefulWidget {
 class _FriendsScreenState extends State<FriendsScreen> {
   final Color pointColor = const Color(0xFF5B5FFF);
   final TextEditingController friendCodeController = TextEditingController();
+  final AuthService _authService = AuthService();
 
   final int maxFreeFriends = 5;
   String selectedTab = '내 친구';
 
-  final List<FriendData> friends = [
-    FriendData(displayName: '민수', career: '운동 2년차'),
-    FriendData(displayName: '현우', career: '운동 1년차'),
-  ];
+  final List<FriendData> friends = [];
+  final List<FriendRequestData> receivedRequests = [];
+  final List<FriendRequestData> sentRequests = [];
+  late final Future<Map<String, dynamic>?> _currentUserData;
 
-  final List<FriendRequestData> receivedRequests = [
-    FriendRequestData(displayName: '준호', career: '운동 3년차'),
-    FriendRequestData(displayName: '도윤', career: '운동 6개월차'),
-  ];
-
-  final List<FriendRequestData> sentRequests = [
-    FriendRequestData(displayName: '서연', career: '운동 1년차'),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _currentUserData = _authService.getCurrentUserData();
+  }
 
   @override
   void dispose() {
@@ -71,7 +71,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                   controller: friendCodeController,
                   textCapitalization: TextCapitalization.characters,
                   decoration: InputDecoration(
-                    hintText: '예: S4829137',
+                    hintText: '예: A1234567',
                     filled: true,
                     fillColor: const Color(0xFFF4F5F7),
                     contentPadding: const EdgeInsets.symmetric(
@@ -299,6 +299,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
             ),
           ),
 
+        if (friends.isEmpty)
+          const _EmptyFriendsCard(message: '아직 친구가 없어요.'),
+
         ...List.generate(
           friends.length,
               (index) => _FriendCard(
@@ -372,14 +375,20 @@ class _FriendsScreenState extends State<FriendsScreen> {
             ),
           ),
           const Spacer(),
-          const Text(
-            'S4829137',
-            style: TextStyle(
-              fontSize: 18,
-              color: Color(0xFF111111),
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1,
-            ),
+          FutureBuilder<Map<String, dynamic>?>(
+            future: _currentUserData,
+            builder: (context, snapshot) {
+              final friendCode = snapshot.data?['friendCode'] as String?;
+              return Text(
+                friendCode ?? (snapshot.hasError ? '불러오기 실패' : '불러오는 중'),
+                style: const TextStyle(
+                  fontSize: 18,
+                  color: Color(0xFF111111),
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1,
+                ),
+              );
+            },
           ),
           const SizedBox(width: 12),
           Icon(
@@ -399,6 +408,33 @@ class _FriendsScreenState extends State<FriendsScreen> {
         fontSize: 20,
         fontWeight: FontWeight.w900,
         color: Color(0xFF111111),
+      ),
+    );
+  }
+}
+
+class _EmptyFriendsCard extends StatelessWidget {
+  final String message;
+
+  const _EmptyFriendsCard({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F5F7),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Text(
+        message,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontSize: 14,
+          color: Color(0xFF777777),
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

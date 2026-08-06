@@ -1,6 +1,9 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:top_snackbar_flutter/custom_snack_bar.dart';
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
+
+import '../services/auth_service.dart';
 import 'main_screen.dart';
 
 class EmailLoginScreen extends StatefulWidget {
@@ -13,10 +16,16 @@ class EmailLoginScreen extends StatefulWidget {
 class _EmailLoginScreenState extends State<EmailLoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final AuthService _authService = AuthService();
 
   bool _obscurePassword = true;
+  bool _isLoading = false;
 
-  void _login() {
+  Future<void> _login() async {
+    if (_isLoading) {
+      return;
+    }
+
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
@@ -37,10 +46,57 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
       return;
     }
 
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await _authService.signIn(email: email, password: password);
+    } on FirebaseAuthException catch (error) {
+      if (mounted) {
+        _showError(_firebaseErrorMessage(error.code));
+      }
+      return;
+    } catch (_) {
+      if (mounted) {
+        _showError('로그인 중 오류가 발생했습니다. 다시 시도해주세요.');
+      }
+      return;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => const MainScreen()),
     );
+  }
+
+  String _firebaseErrorMessage(String code) {
+    switch (code) {
+      case 'invalid-credential':
+      case 'user-not-found':
+      case 'wrong-password':
+        return '이메일 또는 비밀번호가 올바르지 않습니다.';
+      case 'invalid-email':
+        return '올바른 이메일 형식이 아닙니다.';
+      case 'user-disabled':
+        return '사용이 중지된 계정입니다.';
+      case 'too-many-requests':
+        return '로그인 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.';
+      case 'network-request-failed':
+        return '네트워크 연결을 확인해주세요.';
+      default:
+        return '로그인 중 오류가 발생했습니다. 다시 시도해주세요.';
+    }
   }
 
   @override
@@ -264,23 +320,34 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                           width: double.infinity,
                           height: 58,
                           child: ElevatedButton(
-                            onPressed: _login,
+                            onPressed: _isLoading ? null : _login,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: pointColor,
                               foregroundColor: Colors.white,
+                              disabledBackgroundColor: pointColor,
+                              disabledForegroundColor: Colors.white,
                               elevation: 0,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(22),
                               ),
                             ),
-                            child: const Text(
-                              '로그인',
-                              style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -0.2,
-                              ),
-                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text(
+                                    '로그인',
+                                    style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: -0.2,
+                                    ),
+                                  ),
                           ),
                         ),
                       ],

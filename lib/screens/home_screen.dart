@@ -5,42 +5,9 @@ import '../widgets/section_title.dart';
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
-  final List<WorkingOutFriend> workingOutFriends = const [
-    WorkingOutFriend(
-      name: '민수',
-      status: '가슴 운동 · 42분째',
-    ),
-    WorkingOutFriend(
-      name: '현우',
-      status: '러닝 · 3.2km',
-    ),
-  ];
-
-  final List<CompletedFriend> completedFriends = const [
-    CompletedFriend(
-      name: '준호',
-      workoutTitle: '하체 운동 완료',
-      detail: '1시간 18분 · 18세트',
-      hasPhoto: true,
-    ),
-    CompletedFriend(
-      name: '도윤',
-      workoutTitle: '러닝 완료',
-      detail: '32분 · 3.2km',
-      hasPhoto: true,
-    ),
-  ];
-
-  final List<RestingFriend> restingFriends = const [
-    RestingFriend(
-      name: '서연',
-      restText: '2일째 쉬는 중',
-    ),
-    RestingFriend(
-      name: '지훈',
-      restText: '4일째 쉬는 중',
-    ),
-  ];
+  final List<WorkingOutFriend> workingOutFriends = const [];
+  final List<CompletedFriend> completedFriends = const [];
+  final List<RestingFriend> restingFriends = const [];
 
   @override
   Widget build(BuildContext context) {
@@ -99,9 +66,14 @@ class HomeScreen extends StatelessWidget {
             const SectionTitle(title: '오늘 운동 안 한 친구'),
             const SizedBox(height: 16),
 
-            ...restingFriends.map(
-                  (friend) => _RestingFriendCard(friend: friend),
-            ),
+            if (restingFriends.isEmpty)
+              const _EmptyHomeCard(
+                message: '오늘 운동 안 한 친구가 없어요.',
+              )
+            else
+              ...restingFriends.map(
+                (friend) => _RestingFriendCard(friend: friend),
+              ),
           ],
         ),
       ),

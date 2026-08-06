@@ -16,6 +16,16 @@ class AuthService {
   final FirebaseFirestore _firestore;
   final Random _random;
 
+  Future<void> signIn({
+    required String email,
+    required String password,
+  }) async {
+    await _firebaseAuth.signInWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+  }
+
   Future<void> signUp({
     required String email,
     required String password,
@@ -72,6 +82,65 @@ class AuthService {
       if (existingUsers.docs.isEmpty) {
         return friendCode;
       }
+    }
+  }
+
+  Future<Map<String, dynamic>?> getCurrentUserData() async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      return null;
+    }
+
+    final snapshot = await _firestore.collection('users').doc(user.uid).get();
+    return snapshot.data();
+  }
+
+  Future<void> updateCurrentUserProfile({
+    required String name,
+    required DateTime experienceStartDate,
+  }) async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'user-not-found',
+        message: '현재 로그인한 사용자가 없습니다.',
+      );
+    }
+
+    await _firestore.collection('users').doc(user.uid).update({
+      'name': name,
+      'experienceStartDate': Timestamp.fromDate(experienceStartDate),
+    });
+  }
+
+  Future<void> signOut() async {
+    await _firebaseAuth.signOut();
+  }
+
+  Future<void> deleteAccount() async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    final userDocument = _firestore.collection('users').doc(user.uid);
+    final snapshot = await userDocument.get();
+    final userData = snapshot.data();
+
+    await userDocument.delete();
+
+    try {
+      await user.delete();
+    } catch (error, stackTrace) {
+      if (snapshot.exists && userData != null) {
+        try {
+          await userDocument.set(userData);
+        } catch (_) {
+          // Account deletion errors take precedence over best-effort rollback.
+        }
+      }
+
+      Error.throwWithStackTrace(error, stackTrace);
     }
   }
 

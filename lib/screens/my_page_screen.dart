@@ -1,7 +1,14 @@
-import 'package:flutter/material.dart';
-import 'settings_screen.dart';
 import 'dart:io';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:top_snackbar_flutter/top_snack_bar.dart';
+
+import '../models/workout_record.dart';
+import '../services/auth_service.dart';
+import '../services/workout_service.dart';
+import 'settings_screen.dart';
 
 class MyPageScreen extends StatefulWidget {
   const MyPageScreen({super.key});
@@ -12,67 +19,135 @@ class MyPageScreen extends StatefulWidget {
 
 class _MyPageScreenState extends State<MyPageScreen> {
   final Color pointColor = const Color(0xFF5B5FFF);
+  final AuthService _authService = AuthService();
+  final WorkoutService _workoutService = WorkoutService();
 
   String selectedSummaryPeriod = '주';
-  String displayName = '강현';
+  String displayName = '';
+  DateTime? experienceStartDate;
+  bool isLoadingProfile = true;
   File? profileImageFile;
+  late final Stream<List<WorkoutRecord>> _workoutsStream;
+  late DateTime displayedWorkoutMonth;
+  DateTime? selectedWorkoutDate;
 
   final TextEditingController nameController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    displayedWorkoutMonth = DateTime(now.year, now.month);
+    selectedWorkoutDate = DateTime(now.year, now.month, now.day);
+    _workoutsStream = _workoutService.watchCompletedWorkouts();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final userData = await _authService.getCurrentUserData();
+      if (!mounted) {
+        return;
+      }
+
+      final storedName = userData?['name'];
+      final storedStartDate = userData?['experienceStartDate'];
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      DateTime? validStartDate;
+      if (storedStartDate is Timestamp) {
+        final parsedStartDate = storedStartDate.toDate();
+        final normalizedStartDate = DateTime(
+          parsedStartDate.year,
+          parsedStartDate.month,
+          parsedStartDate.day,
+        );
+        if (!normalizedStartDate.isAfter(today)) {
+          validStartDate = normalizedStartDate;
+        }
+      }
+
+      setState(() {
+        displayName = storedName is String ? storedName : '';
+        experienceStartDate = validStartDate;
+        isLoadingProfile = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isLoadingProfile = false;
+      });
+      _showError('프로필 정보를 불러오지 못했습니다. 다시 시도해주세요.');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
-          children: [
-            Row(
+        child: StreamBuilder<List<WorkoutRecord>>(
+          stream: _workoutsStream,
+          builder: (context, snapshot) {
+            final workouts = snapshot.data ?? const <WorkoutRecord>[];
+            final isLoading =
+                snapshot.connectionState == ConnectionState.waiting &&
+                !snapshot.hasData;
+
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
               children: [
-                const Expanded(
-                  child: Text(
-                    '마이',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF111111),
-                    ),
-                  ),
-                ),
-
-                IconButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const SettingsScreen(),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        '마이',
+                        style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF111111),
+                        ),
                       ),
-                    );
-                  },
-                  icon: const Icon(
-                    Icons.settings_rounded,
-                    size: 28,
-                    color: Color(0xFF111111),
-                  ),
+                    ),
+
+                    IconButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const SettingsScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(
+                        Icons.settings_rounded,
+                        size: 28,
+                        color: Color(0xFF111111),
+                      ),
+                    ),
+                  ],
                 ),
+
+                const SizedBox(height: 24),
+
+                _buildProfileCard(),
+
+                const SizedBox(height: 18),
+
+                _buildWorkoutSummaryCard(workouts, isLoading),
+
+                const SizedBox(height: 18),
+
+                _buildWorkoutCalendarCard(workouts),
+
+                const SizedBox(height: 18),
+
+                _buildProCard(),
               ],
-            ),
-
-            const SizedBox(height: 24),
-
-            _buildProfileCard(),
-
-            const SizedBox(height: 18),
-
-            _buildWorkoutSummaryCard(),
-
-            const SizedBox(height: 18),
-
-            _buildWorkoutCalendarCard(),
-
-            const SizedBox(height: 18),
-
-            _buildProCard(),
-          ],
+            );
+          },
         ),
       ),
     );
@@ -83,129 +158,335 @@ class _MyPageScreenState extends State<MyPageScreen> {
 
     showDialog(
       context: context,
-      builder: (context) {
-        return Dialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 28),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(28),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  '프로필 수정',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF111111),
-                  ),
-                ),
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        var selectedStartDate = experienceStartDate;
+        var isSaving = false;
 
-                const SizedBox(height: 22),
-
-                GestureDetector(
-                  onTap: pickProfileImage,
-                  child: CircleAvatar(
-                    radius: 42,
-                    backgroundColor: const Color(0xFFE5E7EB),
-                    backgroundImage: profileImageFile != null
-                        ? FileImage(profileImageFile!)
-                        : null,
-                    child: profileImageFile == null
-                        ? const Icon(
-                      Icons.person_rounded,
-                      size: 46,
-                      color: Color(0xFF9CA3AF),
-                    )
-                        : null,
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                TextButton(
-                  onPressed: pickProfileImage,
-                  child: const Text(
-                    '프로필 사진 변경',
-                    style: TextStyle(
-                      color: Color(0xFF5B5FFF),
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 14),
-
-                TextField(
-                  controller: nameController,
-                  decoration: InputDecoration(
-                    hintText: '이름',
-                    filled: true,
-                    fillColor: const Color(0xFFF4F5F7),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 16,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(18),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 22),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: SizedBox(
-                        height: 52,
-                        child: OutlinedButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                          },
-                          child: const Text('취소'),
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        '프로필 수정',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF111111),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: SizedBox(
-                        height: 52,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            setState(() {
-                              displayName = nameController.text.trim().isEmpty
-                                  ? displayName
-                                  : nameController.text.trim();
-                            });
 
-                            Navigator.pop(context);
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: pointColor,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
+                      const SizedBox(height: 22),
+
+                      GestureDetector(
+                        onTap: pickProfileImage,
+                        child: CircleAvatar(
+                          radius: 42,
+                          backgroundColor: const Color(0xFFE5E7EB),
+                          backgroundImage: profileImageFile != null
+                              ? FileImage(profileImageFile!)
+                              : null,
+                          child: profileImageFile == null
+                              ? const Icon(
+                                  Icons.person_rounded,
+                                  size: 46,
+                                  color: Color(0xFF9CA3AF),
+                                )
+                              : null,
+                        ),
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      TextButton(
+                        onPressed: pickProfileImage,
+                        child: const Text(
+                          '프로필 사진 변경',
+                          style: TextStyle(
+                            color: Color(0xFF5B5FFF),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 14),
+
+                      TextField(
+                        controller: nameController,
+                        enabled: !isSaving,
+                        decoration: InputDecoration(
+                          hintText: '이름',
+                          filled: true,
+                          fillColor: const Color(0xFFF4F5F7),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 16,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(18),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      GestureDetector(
+                        onTap: isSaving
+                            ? null
+                            : () async {
+                                final now = DateTime.now();
+                                final today = DateTime(
+                                  now.year,
+                                  now.month,
+                                  now.day,
+                                );
+                                final pickedDate = await showDatePicker(
+                                  context: dialogContext,
+                                  initialDate: selectedStartDate ?? today,
+                                  firstDate: DateTime(1, 1, 1),
+                                  lastDate: today,
+                                );
+
+                                if (!dialogContext.mounted ||
+                                    pickedDate == null) {
+                                  return;
+                                }
+
+                                setDialogState(() {
+                                  selectedStartDate = pickedDate;
+                                });
+                              },
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 16,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF4F5F7),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  selectedStartDate == null
+                                      ? '운동 시작일'
+                                      : _formatDate(selectedStartDate!),
+                                  style: TextStyle(
+                                    color: selectedStartDate == null
+                                        ? const Color(0xFFB0B0B0)
+                                        : const Color(0xFF111111),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              const Icon(
+                                Icons.calendar_month_rounded,
+                                color: Color(0xFF5B5FFF),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 22),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SizedBox(
+                              height: 52,
+                              child: OutlinedButton(
+                                onPressed: isSaving
+                                    ? null
+                                    : () => Navigator.pop(dialogContext),
+                                child: const Text('취소'),
+                              ),
                             ),
                           ),
-                          child: const Text(
-                            '저장',
-                            style: TextStyle(fontWeight: FontWeight.w800),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: SizedBox(
+                              height: 52,
+                              child: ElevatedButton(
+                                onPressed: isSaving
+                                    ? null
+                                    : () async {
+                                        final name = nameController.text.trim();
+                                        if (name.isEmpty) {
+                                          _showError('이름을 입력해주세요.');
+                                          return;
+                                        }
+                                        if (selectedStartDate == null) {
+                                          _showError('운동 시작일을 선택해주세요.');
+                                          return;
+                                        }
+
+                                        setDialogState(() {
+                                          isSaving = true;
+                                        });
+
+                                        try {
+                                          await _authService
+                                              .updateCurrentUserProfile(
+                                                name: name,
+                                                experienceStartDate:
+                                                    selectedStartDate!,
+                                              );
+                                        } catch (_) {
+                                          if (!mounted ||
+                                              !dialogContext.mounted) {
+                                            return;
+                                          }
+                                          setDialogState(() {
+                                            isSaving = false;
+                                          });
+                                          _showError(
+                                            '프로필 저장 중 오류가 발생했습니다. 다시 시도해주세요.',
+                                          );
+                                          return;
+                                        }
+
+                                        if (!mounted) {
+                                          return;
+                                        }
+                                        setState(() {
+                                          displayName = name;
+                                          experienceStartDate =
+                                              selectedStartDate;
+                                        });
+
+                                        if (dialogContext.mounted) {
+                                          Navigator.pop(dialogContext);
+                                        }
+                                      },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: pointColor,
+                                  foregroundColor: Colors.white,
+                                  disabledBackgroundColor: pointColor,
+                                  disabledForegroundColor: Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                ),
+                                child: isSaving
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.5,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Text(
+                                        '저장',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '${date.year}.$month.$day';
+  }
+
+  String _experienceText() {
+    final startDate = experienceStartDate;
+    if (startDate == null) {
+      return '운동 경력 미설정';
+    }
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final normalizedStart = DateTime(
+      startDate.year,
+      startDate.month,
+      startDate.day,
+    );
+    if (normalizedStart.isAfter(today)) {
+      return '운동 경력 미설정';
+    }
+
+    var completedYears = today.year - normalizedStart.year;
+    final anniversary = DateTime(
+      today.year,
+      normalizedStart.month,
+      normalizedStart.day,
+    );
+    if (today.isBefore(anniversary)) {
+      completedYears--;
+    }
+
+    return '운동 ${completedYears + 1}년차';
+  }
+
+  void _showError(String message) {
+    showTopSnackBar(
+      Overlay.of(context),
+      Material(
+        color: Colors.transparent,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          decoration: BoxDecoration(
+            color: pointColor,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      displayDuration: const Duration(seconds: 2),
     );
   }
 
@@ -226,10 +507,10 @@ class _MyPageScreenState extends State<MyPageScreen> {
                 : null,
             child: profileImageFile == null
                 ? const Icon(
-              Icons.person_rounded,
-              color: Color(0xFF9CA3AF),
-              size: 38,
-            )
+                    Icons.person_rounded,
+                    color: Color(0xFF9CA3AF),
+                    size: 38,
+                  )
                 : null,
           ),
           const SizedBox(width: 16),
@@ -238,17 +519,19 @@ class _MyPageScreenState extends State<MyPageScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  displayName,
-                  style: TextStyle(
+                  isLoadingProfile
+                      ? '불러오는 중'
+                      : (displayName.isEmpty ? '이름 미설정' : displayName),
+                  style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
                     color: Color(0xFF111111),
                   ),
                 ),
-                SizedBox(height: 6),
+                const SizedBox(height: 6),
                 Text(
-                  '운동 3년차',
-                  style: TextStyle(
+                  isLoadingProfile ? '운동 경력 불러오는 중' : _experienceText(),
+                  style: const TextStyle(
                     fontSize: 14,
                     color: Color(0xFF666666),
                     fontWeight: FontWeight.w600,
@@ -278,7 +561,11 @@ class _MyPageScreenState extends State<MyPageScreen> {
     );
   }
 
-  Widget _buildWorkoutSummaryCard() {
+  Widget _buildWorkoutSummaryCard(
+    List<WorkoutRecord> workouts,
+    bool isLoading,
+  ) {
+    final summary = _calculateWorkoutSummary(workouts);
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
@@ -347,22 +634,16 @@ class _MyPageScreenState extends State<MyPageScreen> {
               Expanded(
                 child: _SummaryBox(
                   title: '운동 일수',
-                  value: selectedSummaryPeriod == '주'
-                      ? '3일'
-                      : selectedSummaryPeriod == '달'
-                      ? '14일'
-                      : '86일',
+                  value: isLoading ? '...' : '${summary.workoutDays}일',
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _SummaryBox(
                   title: '운동 시간',
-                  value: selectedSummaryPeriod == '주'
-                      ? '4h 20m'
-                      : selectedSummaryPeriod == '달'
-                      ? '22h 10m'
-                      : '143h',
+                  value: isLoading
+                      ? '...'
+                      : _formatSummaryDuration(summary.durationSeconds),
                 ),
               ),
             ],
@@ -375,22 +656,18 @@ class _MyPageScreenState extends State<MyPageScreen> {
               Expanded(
                 child: _SummaryBox(
                   title: '헬스 볼륨',
-                  value: selectedSummaryPeriod == '주'
-                      ? '42,000kg'
-                      : selectedSummaryPeriod == '달'
-                      ? '183,000kg'
-                      : '1,240,000kg',
+                  value: isLoading
+                      ? '...'
+                      : '${_formatNumber(summary.totalVolumeKg)}kg',
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _SummaryBox(
                   title: '러닝 거리',
-                  value: selectedSummaryPeriod == '주'
-                      ? '8.4km'
-                      : selectedSummaryPeriod == '달'
-                      ? '41.8km'
-                      : '302.5km',
+                  value: isLoading
+                      ? '...'
+                      : '${(summary.runningDistanceMeters / 1000).toStringAsFixed(1)}km',
                 ),
               ),
             ],
@@ -400,9 +677,92 @@ class _MyPageScreenState extends State<MyPageScreen> {
     );
   }
 
-  Widget _buildWorkoutCalendarCard() {
-    final workoutDays = [3, 7, 12, 18, 24, 28];
-    final today = 28;
+  _WorkoutSummaryTotals _calculateWorkoutSummary(List<WorkoutRecord> workouts) {
+    final now = DateTime.now();
+    final weekStartDate = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: now.weekday - DateTime.monday));
+    final monthStartDate = DateTime(now.year, now.month);
+
+    final filtered = workouts.where((workout) {
+      final endedAt = workout.endedAt.toLocal();
+      if (endedAt.isAfter(now)) {
+        return false;
+      }
+      if (selectedSummaryPeriod == '주') {
+        return !endedAt.isBefore(weekStartDate);
+      }
+      if (selectedSummaryPeriod == '달') {
+        return !endedAt.isBefore(monthStartDate);
+      }
+      return true;
+    }).toList();
+
+    final workoutDates = <String>{};
+    var durationSeconds = 0;
+    var totalVolumeKg = 0.0;
+    var runningDistanceMeters = 0.0;
+
+    for (final workout in filtered) {
+      final endedAt = workout.endedAt.toLocal();
+      workoutDates.add('${endedAt.year}-${endedAt.month}-${endedAt.day}');
+      durationSeconds += workout.durationSeconds;
+      totalVolumeKg += workout.strength?.totalVolumeKg ?? 0;
+      runningDistanceMeters += workout.running?.distanceMeters ?? 0;
+    }
+
+    return _WorkoutSummaryTotals(
+      workoutDays: workoutDates.length,
+      durationSeconds: durationSeconds,
+      totalVolumeKg: totalVolumeKg,
+      runningDistanceMeters: runningDistanceMeters,
+    );
+  }
+
+  String _formatSummaryDuration(int durationSeconds) {
+    final hours = durationSeconds ~/ 3600;
+    final minutes = (durationSeconds % 3600) ~/ 60;
+    return '${hours}h ${minutes}m';
+  }
+
+  String _formatNumber(double value) {
+    final raw = value == value.roundToDouble()
+        ? value.toInt().toString()
+        : value.toStringAsFixed(1);
+    return raw.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (match) => ',',
+    );
+  }
+
+  Widget _buildWorkoutCalendarCard(List<WorkoutRecord> workouts) {
+    final monthStart = displayedWorkoutMonth;
+    final nextMonth = DateTime(monthStart.year, monthStart.month + 1);
+    final daysInMonth = nextMonth.subtract(const Duration(days: 1)).day;
+    final leadingDays = monthStart.weekday % 7;
+    final itemCount = ((leadingDays + daysInMonth + 6) ~/ 7) * 7;
+    final monthWorkouts = workouts.where((workout) {
+      final endedAt = workout.endedAt.toLocal();
+      return endedAt.year == monthStart.year &&
+          endedAt.month == monthStart.month;
+    }).toList();
+    final workoutDays = monthWorkouts
+        .map((workout) => workout.endedAt.toLocal().day)
+        .toSet();
+    final selectedDate = selectedWorkoutDate;
+    final selectedWorkouts = selectedDate == null
+        ? const <WorkoutRecord>[]
+        : monthWorkouts.where((workout) {
+            final endedAt = workout.endedAt.toLocal();
+            return endedAt.year == selectedDate.year &&
+                endedAt.month == selectedDate.month &&
+                endedAt.day == selectedDate.day;
+          }).toList();
+    final now = DateTime.now();
+    final isCurrentMonth =
+        now.year == monthStart.year && now.month == monthStart.month;
 
     return Container(
       padding: const EdgeInsets.all(22),
@@ -433,24 +793,46 @@ class _MyPageScreenState extends State<MyPageScreen> {
           const SizedBox(height: 20),
 
           Row(
-            children: const [
+            children: [
               Text(
-                '2026년 5월',
-                style: TextStyle(
+                '${monthStart.year}년 ${monthStart.month}월',
+                style: const TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w900,
                   color: Color(0xFF111111),
                 ),
               ),
-              Spacer(),
-              Icon(
-                Icons.chevron_left_rounded,
-                color: Color(0xFF999999),
+              const Spacer(),
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    displayedWorkoutMonth = DateTime(
+                      monthStart.year,
+                      monthStart.month - 1,
+                    );
+                    selectedWorkoutDate = null;
+                  });
+                },
+                child: const Icon(
+                  Icons.chevron_left_rounded,
+                  color: Color(0xFF999999),
+                ),
               ),
-              SizedBox(width: 8),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: Color(0xFF999999),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    displayedWorkoutMonth = DateTime(
+                      monthStart.year,
+                      monthStart.month + 1,
+                    );
+                    selectedWorkoutDate = null;
+                  });
+                },
+                child: const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Color(0xFF999999),
+                ),
               ),
             ],
           ),
@@ -475,58 +857,67 @@ class _MyPageScreenState extends State<MyPageScreen> {
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: 35,
+            itemCount: itemCount,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 7,
               mainAxisSpacing: 8,
               crossAxisSpacing: 8,
             ),
             itemBuilder: (context, index) {
-              final day = index - 4;
+              final day = index - leadingDays + 1;
 
-              if (day <= 0 || day > 31) {
+              if (day <= 0 || day > daysInMonth) {
                 return const SizedBox();
               }
 
               final isWorkoutDay = workoutDays.contains(day);
-              final isToday = day == today;
+              final isToday = isCurrentMonth && day == now.day;
 
-              return Container(
-                decoration: BoxDecoration(
-                  color: isToday
-                      ? const Color(0xFF5B5FFF)
-                      : Colors.white,
-                  shape: BoxShape.circle,
-                ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Text(
-                      '$day',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: isToday
-                            ? Colors.white
-                            : const Color(0xFF111111),
-                      ),
-                    ),
-
-                    if (isWorkoutDay)
-                      Positioned(
-                        bottom: 7,
-                        child: Container(
-                          width: 5,
-                          height: 5,
-                          decoration: BoxDecoration(
-                            color: isToday
-                                ? Colors.white
-                                : const Color(0xFF5B5FFF),
-                            shape: BoxShape.circle,
-                          ),
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    selectedWorkoutDate = DateTime(
+                      monthStart.year,
+                      monthStart.month,
+                      day,
+                    );
+                  });
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isToday ? const Color(0xFF5B5FFF) : Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Text(
+                        '$day',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: isToday
+                              ? Colors.white
+                              : const Color(0xFF111111),
                         ),
                       ),
-                  ],
+
+                      if (isWorkoutDay)
+                        Positioned(
+                          bottom: 7,
+                          child: Container(
+                            width: 5,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: isToday
+                                  ? Colors.white
+                                  : const Color(0xFF5B5FFF),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               );
             },
@@ -541,18 +932,46 @@ class _MyPageScreenState extends State<MyPageScreen> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(20),
             ),
-            child: const Text(
-              '5월 28일 · 헬스 1시간 12분',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF111111),
-              ),
-            ),
+            child: selectedWorkouts.isEmpty
+                ? const Text(
+                    '선택한 날짜의 운동 기록이 없어요.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF777777),
+                    ),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: selectedWorkouts.map((workout) {
+                      final endedAt = workout.endedAt.toLocal();
+                      final type = workout.type == 'strength' ? '헬스' : '러닝';
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          '${endedAt.month}월 ${endedAt.day}일 · $type ${_formatCalendarDuration(workout.durationSeconds)}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF111111),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
           ),
         ],
       ),
     );
+  }
+
+  String _formatCalendarDuration(int durationSeconds) {
+    final hours = durationSeconds ~/ 3600;
+    final minutes = (durationSeconds % 3600) ~/ 60;
+    if (hours > 0) {
+      return '$hours시간 $minutes분';
+    }
+    return '$minutes분';
   }
 
   Widget _buildProCard() {
@@ -604,11 +1023,13 @@ class _MyPageScreenState extends State<MyPageScreen> {
       ),
     );
   }
+
   @override
   void dispose() {
     nameController.dispose();
     super.dispose();
   }
+
   Future<void> pickProfileImage() async {
     final picker = ImagePicker();
 
@@ -629,18 +1050,12 @@ class _SummaryBox extends StatelessWidget {
   final String title;
   final String value;
 
-  const _SummaryBox({
-    required this.title,
-    required this.value,
-  });
+  const _SummaryBox({required this.title, required this.value});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 16,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -729,4 +1144,18 @@ class _SummaryPeriodButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class _WorkoutSummaryTotals {
+  const _WorkoutSummaryTotals({
+    required this.workoutDays,
+    required this.durationSeconds,
+    required this.totalVolumeKg,
+    required this.runningDistanceMeters,
+  });
+
+  final int workoutDays;
+  final int durationSeconds;
+  final double totalVolumeKg;
+  final double runningDistanceMeters;
 }

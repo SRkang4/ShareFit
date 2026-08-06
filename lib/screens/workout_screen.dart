@@ -1,7 +1,14 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:top_snackbar_flutter/top_snack_bar.dart';
+
+import '../models/workout_record.dart';
+import '../services/location_tracking_service.dart';
+import '../services/workout_service.dart';
 
 class WorkoutScreen extends StatefulWidget {
   const WorkoutScreen({super.key});
@@ -10,7 +17,8 @@ class WorkoutScreen extends StatefulWidget {
   State<WorkoutScreen> createState() => _WorkoutScreenState();
 }
 
-class _WorkoutScreenState extends State<WorkoutScreen> {
+class _WorkoutScreenState extends State<WorkoutScreen>
+    with WidgetsBindingObserver {
   final Color pointColor = const Color(0xFF5B5FFF);
   final Color subPointColor = const Color(0xFF7C82FF);
 
@@ -21,19 +29,41 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   final List<String> bodyParts = ['가슴', '등', '어깨', '하체', '이두', '삼두'];
   final Set<String> selectedBodyParts = {};
 
-  final List<ExerciseCardData> exercises = [
-    ExerciseCardData(),
-  ];
+  final List<ExerciseCardData> exercises = [ExerciseCardData()];
   final List<FinishedWorkoutSummary> finishedWorkouts = [];
   final TextEditingController runningGoalController = TextEditingController();
-  double runningDistanceKm = 0.0;
+  final LocationTrackingService locationTrackingService =
+      LocationTrackingService();
+  final WorkoutService workoutService = WorkoutService();
+  double runningDistanceMeters = 0.0;
+  Position? lastRunningPosition;
+  int validRunningLocationCount = 0;
   Timer? timer;
+  Timer? weakGpsTimer;
   int seconds = 0;
   bool isPaused = false;
+  bool isStartingWorkout = false;
+  bool isChangingPauseState = false;
+  bool isFinishingWorkout = false;
+  bool hasShownWeakGpsMessage = false;
+  DateTime? workoutStartedAt;
+  String? lastErrorMessage;
+  DateTime? lastErrorShownAt;
+
+  double get runningDistanceKm => runningDistanceMeters / 1000;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     timer?.cancel();
+    weakGpsTimer?.cancel();
+    unawaited(locationTrackingService.dispose());
     runningGoalController.dispose();
     for (final exercise in exercises) {
       exercise.dispose();
@@ -41,7 +71,52 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     super.dispose();
   }
 
-  void startWorkout() {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if ((state == AppLifecycleState.inactive ||
+            state == AppLifecycleState.paused) &&
+        isWorkoutStarted &&
+        selectedWorkoutType == '러닝' &&
+        !isPaused) {
+      setState(() {
+        isPaused = true;
+      });
+      unawaited(_stopRunningLocationTracking());
+    }
+  }
+
+  Future<void> startWorkout() async {
+    if (isStartingWorkout) {
+      return;
+    }
+
+    if (selectedWorkoutType == '러닝') {
+      setState(() {
+        isStartingWorkout = true;
+      });
+      runningDistanceMeters = 0.0;
+      lastRunningPosition = null;
+      validRunningLocationCount = 0;
+
+      try {
+        await _startRunningLocationTracking();
+      } catch (error) {
+        if (!mounted) {
+          return;
+        }
+        _showLocationError(error);
+        setState(() {
+          isStartingWorkout = false;
+        });
+        return;
+      }
+
+      if (!mounted) {
+        await locationTrackingService.stop();
+        return;
+      }
+    }
+
     setState(() {
       if (isWorkoutFinished) {
         resetCurrentWorkout();
@@ -51,17 +126,16 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       isWorkoutStarted = true;
       isPaused = false;
       seconds = 0;
-      runningDistanceKm = 0.0;
+      workoutStartedAt = DateTime.now();
+      if (selectedWorkoutType != '러닝') {
+        runningDistanceMeters = 0.0;
+        lastRunningPosition = null;
+        validRunningLocationCount = 0;
+      }
+      isStartingWorkout = false;
     });
 
-    timer?.cancel();
-    timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!isPaused) {
-        setState(() {
-          seconds++;
-        });
-      }
-    });
+    _startActiveTimer();
   }
 
   void increaseRunningGoal() {
@@ -82,49 +156,471 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     });
   }
 
-  void togglePause() {
+  Future<void> togglePause() async {
+    if (isChangingPauseState) {
+      return;
+    }
+
+    if (selectedWorkoutType != '러닝') {
+      setState(() {
+        isPaused = !isPaused;
+      });
+      return;
+    }
+
+    isChangingPauseState = true;
+
+    if (!isPaused) {
+      setState(() {
+        isPaused = true;
+      });
+      await _stopRunningLocationTracking();
+      isChangingPauseState = false;
+      return;
+    }
+
+    try {
+      await _startRunningLocationTracking();
+    } catch (error) {
+      if (mounted) {
+        _showLocationError(error);
+      }
+      isChangingPauseState = false;
+      return;
+    }
+
+    if (!mounted) {
+      await locationTrackingService.stop();
+      return;
+    }
     setState(() {
-      isPaused = !isPaused;
+      isPaused = false;
     });
+    isChangingPauseState = false;
   }
 
-  void finishWorkout() {
+  Future<void> finishWorkout() async {
+    if (isFinishingWorkout) {
+      return;
+    }
+
+    final endedAt = DateTime.now();
+    final durationSeconds = seconds;
+    late final WorkoutRecord workoutRecord;
+
+    try {
+      workoutRecord = _createWorkoutRecord(
+        endedAt: endedAt,
+        durationSeconds: durationSeconds,
+      );
+    } on WorkoutValidationException catch (error) {
+      _showError(error.message);
+      return;
+    } catch (_) {
+      _showError('운동 기록을 확인해주세요.');
+      return;
+    }
+
+    final wasPaused = isPaused;
+    setState(() {
+      isFinishingWorkout = true;
+      isPaused = true;
+    });
     timer?.cancel();
 
-    int totalSets = 0;
-
-    for (final exercise in exercises) {
-      totalSets += exercise.sets.where((set) => set.isDone).length;
+    if (selectedWorkoutType == '러닝') {
+      try {
+        await _stopRunningLocationTracking();
+      } catch (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          isFinishingWorkout = false;
+          isPaused = true;
+        });
+        _showError('위치 추적을 종료하지 못했습니다. 잠시 후 다시 시도해주세요.');
+        return;
+      }
+      if (!mounted) {
+        return;
+      }
     }
 
-    String runningPaceText = '-';
+    try {
+      await workoutService.saveCompletedWorkout(workoutRecord);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
 
-    if (runningDistanceKm > 0) {
-      final runningPace = seconds / 60 / runningDistanceKm;
+      var resumed = wasPaused;
+      if (!wasPaused) {
+        if (selectedWorkoutType == '러닝') {
+          try {
+            await _startRunningLocationTracking();
+            resumed = true;
+          } catch (error) {
+            resumed = false;
+            if (mounted) {
+              _showLocationError(error);
+            }
+          }
+        } else {
+          resumed = true;
+        }
+      }
 
-      final min = runningPace.floor();
-      final sec = ((runningPace - min) * 60).round();
-
-      runningPaceText = '$min\'${sec.toString().padLeft(2, '0')}"';
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        isFinishingWorkout = false;
+        isPaused = wasPaused || !resumed;
+      });
+      if (!isPaused) {
+        _startActiveTimer();
+      }
+      _showError('운동 기록을 저장하지 못했습니다. 다시 시도해주세요.');
+      return;
     }
 
-    finishedWorkouts.insert(
-      0,
-      FinishedWorkoutSummary(
-        workoutType: selectedWorkoutType,
-        duration: formattedTime,
-        exerciseCount: exercises.length,
-        totalSets: totalSets,
-        runningDistance: runningDistanceKm,
-        runningPace: runningPaceText,
-      ),
-    );
+    final strength = workoutRecord.strength;
+    final running = workoutRecord.running;
+    final averagePace = running?.averagePaceSecondsPerKm;
 
     setState(() {
+      finishedWorkouts.insert(
+        0,
+        FinishedWorkoutSummary(
+          workoutType: selectedWorkoutType,
+          duration: _formatDuration(durationSeconds),
+          exerciseCount: strength?.exercises.length ?? 0,
+          totalSets: strength?.completedSetCount ?? 0,
+          runningDistance: (running?.distanceMeters ?? 0) / 1000,
+          runningPace: averagePace == null ? '-' : _formatPace(averagePace),
+        ),
+      );
       isWorkoutStarted = false;
       isPaused = false;
       isWorkoutFinished = true;
+      isFinishingWorkout = false;
+      workoutStartedAt = null;
     });
+  }
+
+  WorkoutRecord _createWorkoutRecord({
+    required DateTime endedAt,
+    required int durationSeconds,
+  }) {
+    final userId = workoutService.currentUserId;
+    if (userId == null) {
+      throw const WorkoutValidationException('로그인 정보를 확인해주세요.');
+    }
+
+    final startedAt =
+        workoutStartedAt ??
+        endedAt.subtract(Duration(seconds: durationSeconds));
+
+    if (selectedWorkoutType == '헬스') {
+      final strength = _createStrengthWorkoutData();
+      return WorkoutRecord(
+        userId: userId,
+        type: 'strength',
+        startedAt: startedAt,
+        endedAt: endedAt,
+        durationSeconds: durationSeconds,
+        strength: strength,
+      );
+    }
+
+    final targetDistanceKm =
+        double.tryParse(runningGoalController.text.trim()) ?? 0;
+    if (!targetDistanceKm.isFinite || targetDistanceKm < 0) {
+      throw const WorkoutValidationException('목표 거리를 올바르게 입력해주세요.');
+    }
+    final averagePaceSecondsPerKm = runningDistanceMeters > 0
+        ? durationSeconds / (runningDistanceMeters / 1000)
+        : null;
+
+    return WorkoutRecord(
+      userId: userId,
+      type: 'running',
+      startedAt: startedAt,
+      endedAt: endedAt,
+      durationSeconds: durationSeconds,
+      running: RunningWorkoutData(
+        targetDistanceMeters: targetDistanceKm * 1000,
+        distanceMeters: runningDistanceMeters,
+        acceptedLocationCount: validRunningLocationCount,
+        averagePaceSecondsPerKm: averagePaceSecondsPerKm,
+      ),
+    );
+  }
+
+  StrengthWorkoutData _createStrengthWorkoutData() {
+    final savedExercises = <StrengthExerciseData>[];
+    var completedSetCount = 0;
+    var totalVolumeKg = 0.0;
+
+    for (final exercise in exercises) {
+      final completedSets = exercise.sets.where((set) => set.isDone).toList();
+      if (completedSets.isEmpty) {
+        continue;
+      }
+
+      final exerciseName = exercise.exerciseNameController.text.trim();
+      if (exerciseName.isEmpty) {
+        throw const WorkoutValidationException('완료한 세트의 운동 종목을 입력해주세요.');
+      }
+
+      final savedSets = <StrengthSetData>[];
+      for (final set in completedSets) {
+        final weightText = set.weightController.text.trim();
+        final repsText = set.repsController.text.trim();
+        if (weightText.isEmpty || repsText.isEmpty) {
+          throw const WorkoutValidationException('완료한 세트의 무게와 횟수를 입력해주세요.');
+        }
+
+        final weightKg = double.tryParse(weightText);
+        final reps = int.tryParse(repsText);
+        if (weightKg == null ||
+            !weightKg.isFinite ||
+            weightKg < 0 ||
+            reps == null ||
+            reps < 1) {
+          throw const WorkoutValidationException(
+            '무게는 0 이상, 횟수는 1 이상의 숫자로 입력해주세요.',
+          );
+        }
+
+        savedSets.add(StrengthSetData(weightKg: weightKg, reps: reps));
+        completedSetCount++;
+        totalVolumeKg += weightKg * reps;
+      }
+
+      savedExercises.add(
+        StrengthExerciseData(name: exerciseName, sets: savedSets),
+      );
+    }
+
+    return StrengthWorkoutData(
+      bodyParts: bodyParts
+          .where((bodyPart) => selectedBodyParts.contains(bodyPart))
+          .toList(),
+      exercises: savedExercises,
+      completedSetCount: completedSetCount,
+      totalVolumeKg: totalVolumeKg,
+    );
+  }
+
+  void _startActiveTimer() {
+    timer?.cancel();
+    timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || isPaused) {
+        return;
+      }
+      setState(() {
+        seconds++;
+      });
+    });
+  }
+
+  String _formatDuration(int durationSeconds) {
+    final h = durationSeconds ~/ 3600;
+    final m = (durationSeconds % 3600) ~/ 60;
+    final s = durationSeconds % 60;
+    return '${h.toString().padLeft(2, '0')}:'
+        '${m.toString().padLeft(2, '0')}:'
+        '${s.toString().padLeft(2, '0')}';
+  }
+
+  String _formatPace(double paceSecondsPerKm) {
+    final totalSeconds = paceSecondsPerKm.round();
+    final min = totalSeconds ~/ 60;
+    final sec = totalSeconds % 60;
+    return '$min\'${sec.toString().padLeft(2, '0')}"';
+  }
+
+  Future<void> _startRunningLocationTracking() async {
+    lastRunningPosition = null;
+    hasShownWeakGpsMessage = false;
+
+    try {
+      await locationTrackingService.start(
+        onPosition: _handleRunningPosition,
+        onError: _handleRunningLocationError,
+      );
+      if (lastRunningPosition == null) {
+        _scheduleWeakGpsWarning();
+      }
+    } catch (_) {
+      weakGpsTimer?.cancel();
+      rethrow;
+    }
+  }
+
+  Future<void> _stopRunningLocationTracking() async {
+    weakGpsTimer?.cancel();
+    lastRunningPosition = null;
+    await locationTrackingService.stop();
+  }
+
+  void _handleRunningPosition(Position position) {
+    if (!mounted || isPaused || selectedWorkoutType != '러닝') {
+      return;
+    }
+
+    final now = DateTime.now();
+    if (position.accuracy < 0 || position.accuracy > 25) {
+      _scheduleWeakGpsWarning();
+      return;
+    }
+    if (now.difference(position.timestamp) > const Duration(seconds: 10)) {
+      _scheduleWeakGpsWarning();
+      return;
+    }
+
+    final previousPosition = lastRunningPosition;
+    if (previousPosition == null) {
+      weakGpsTimer?.cancel();
+      setState(() {
+        lastRunningPosition = position;
+        validRunningLocationCount++;
+      });
+      return;
+    }
+
+    if (!position.timestamp.isAfter(previousPosition.timestamp)) {
+      return;
+    }
+
+    final segmentMeters = Geolocator.distanceBetween(
+      previousPosition.latitude,
+      previousPosition.longitude,
+      position.latitude,
+      position.longitude,
+    );
+    if (segmentMeters < 3) {
+      return;
+    }
+
+    final elapsedSeconds =
+        position.timestamp
+            .difference(previousPosition.timestamp)
+            .inMilliseconds /
+        1000;
+    if (elapsedSeconds <= 0 || segmentMeters / elapsedSeconds >= 12) {
+      _scheduleWeakGpsWarning();
+      return;
+    }
+
+    weakGpsTimer?.cancel();
+    setState(() {
+      runningDistanceMeters += segmentMeters;
+      lastRunningPosition = position;
+      validRunningLocationCount++;
+    });
+  }
+
+  void _handleRunningLocationError(Object error) {
+    if (!mounted) {
+      return;
+    }
+
+    if (isWorkoutStarted && !isPaused) {
+      setState(() {
+        isPaused = true;
+      });
+    }
+    unawaited(_stopRunningLocationTracking());
+    _showLocationError(error);
+  }
+
+  void _scheduleWeakGpsWarning() {
+    if (hasShownWeakGpsMessage || weakGpsTimer?.isActive == true) {
+      return;
+    }
+
+    weakGpsTimer = Timer(const Duration(seconds: 15), () {
+      if (!mounted || isPaused || selectedWorkoutType != '러닝') {
+        return;
+      }
+      hasShownWeakGpsMessage = true;
+      _showError('GPS 신호가 약합니다. 하늘이 잘 보이는 곳에서 다시 시도해주세요.');
+    });
+  }
+
+  void _showLocationError(Object error) {
+    if (error is LocationTrackingException) {
+      switch (error.type) {
+        case LocationTrackingFailureType.serviceDisabled:
+          _showError('위치 서비스가 꺼져 있습니다. 기기 설정에서 GPS를 켜주세요.');
+          return;
+        case LocationTrackingFailureType.permissionDenied:
+          _showError('러닝 거리 측정을 위해 위치 권한이 필요합니다.');
+          return;
+        case LocationTrackingFailureType.permissionDeniedForever:
+          _showError('위치 권한이 영구적으로 거부되었습니다. 앱 설정에서 위치 권한을 허용해주세요.');
+          return;
+        case LocationTrackingFailureType.positionUnavailable:
+          _showError('위치 정보를 가져오지 못했습니다. 잠시 후 다시 시도해주세요.');
+          return;
+      }
+    }
+
+    _showError('위치 정보를 가져오지 못했습니다. 잠시 후 다시 시도해주세요.');
+  }
+
+  void _showError(String message) {
+    final now = DateTime.now();
+    if (lastErrorMessage == message &&
+        lastErrorShownAt != null &&
+        now.difference(lastErrorShownAt!) < const Duration(seconds: 2)) {
+      return;
+    }
+    lastErrorMessage = message;
+    lastErrorShownAt = now;
+
+    showTopSnackBar(
+      Overlay.of(context),
+      Material(
+        color: Colors.transparent,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          decoration: BoxDecoration(
+            color: pointColor,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      displayDuration: const Duration(seconds: 2),
+    );
   }
 
   Future<void> pickWorkoutImage(FinishedWorkoutSummary workout) async {
@@ -191,11 +687,10 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
             if (!isWorkoutStarted) ...[
               ...finishedWorkouts.map(
-                    (workout) => _buildFinishedWorkoutCard(workout),
+                (workout) => _buildFinishedWorkoutCard(workout),
               ),
 
-              if (finishedWorkouts.isNotEmpty)
-                const SizedBox(height: 30),
+              if (finishedWorkouts.isNotEmpty) const SizedBox(height: 30),
 
               _buildWorkoutTypeSelector(),
               const SizedBox(height: 26),
@@ -216,7 +711,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 const SizedBox(height: 18),
 
                 ...exercises.map(
-                      (exercise) => ExerciseRecordCard(
+                  (exercise) => ExerciseRecordCard(
                     data: exercise,
                     pointColor: pointColor,
                     onChanged: () {
@@ -233,61 +728,74 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       ),
       bottomNavigationBar: isWorkoutStarted
           ? SafeArea(
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
-          color: Colors.white,
-          child: Row(
-            children: [
-              Expanded(
-                child: SizedBox(
-                  height: 56,
-                  child: OutlinedButton(
-                    onPressed: togglePause,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF5B5FFF),
-                      side: const BorderSide(
-                        color: Color(0xFF5B5FFF),
-                        width: 1.4,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+                color: Colors.white,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 56,
+                        child: OutlinedButton(
+                          onPressed: isChangingPauseState || isFinishingWorkout
+                              ? null
+                              : togglePause,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF5B5FFF),
+                            side: const BorderSide(
+                              color: Color(0xFF5B5FFF),
+                              width: 1.4,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                          child: Icon(
+                            isPaused
+                                ? Icons.play_arrow_rounded
+                                : Icons.pause_rounded,
+                            size: 30,
+                          ),
+                        ),
                       ),
                     ),
-                    child: Icon(
-                      isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
-                      size: 30,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SizedBox(
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: isFinishingWorkout ? null : finishWorkout,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFF5A76),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                          child: isFinishingWorkout
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  '운동 종료',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: SizedBox(
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: finishWorkout,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF5A76),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                    ),
-                    child: const Text(
-                      '운동 종료',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      )
+            )
           : null,
     );
   }
@@ -313,10 +821,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 const SizedBox(height: 8),
                 const Text(
                   '오늘의 운동을 시작해보세요.',
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: Color(0xFF666666),
-                  ),
+                  style: TextStyle(fontSize: 15, color: Color(0xFF666666)),
                 ),
               ],
             ],
@@ -483,7 +988,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     return SizedBox(
       height: 58,
       child: ElevatedButton(
-        onPressed: startWorkout,
+        onPressed: isStartingWorkout ? null : startWorkout,
         style: ElevatedButton.styleFrom(
           backgroundColor: pointColor,
           foregroundColor: Colors.white,
@@ -494,18 +999,13 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         ),
         child: const Text(
           '운동 시작',
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-          ),
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
         ),
       ),
     );
   }
 
-  Widget _buildFinishedWorkoutCard(
-      FinishedWorkoutSummary workout,
-      ) {
+  Widget _buildFinishedWorkoutCard(FinishedWorkoutSummary workout) {
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(24),
@@ -527,35 +1027,20 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
           const SizedBox(height: 28),
 
           if (workout.workoutType == '헬스') ...[
-            _buildSummaryItem(
-              title: '운동 종류',
-              value: workout.workoutType,
-            ),
+            _buildSummaryItem(title: '운동 종류', value: workout.workoutType),
             const SizedBox(height: 18),
-            _buildSummaryItem(
-              title: '운동 시간',
-              value: workout.duration,
-            ),
+            _buildSummaryItem(title: '운동 시간', value: workout.duration),
             const SizedBox(height: 18),
             _buildSummaryItem(
               title: '운동 종목',
               value: '${workout.exerciseCount}개',
             ),
             const SizedBox(height: 18),
-            _buildSummaryItem(
-              title: '완료 세트',
-              value: '${workout.totalSets}세트',
-            ),
+            _buildSummaryItem(title: '완료 세트', value: '${workout.totalSets}세트'),
           ] else ...[
-            _buildSummaryItem(
-              title: '운동 종류',
-              value: workout.workoutType,
-            ),
+            _buildSummaryItem(title: '운동 종류', value: workout.workoutType),
             const SizedBox(height: 18),
-            _buildSummaryItem(
-              title: '운동 시간',
-              value: workout.duration,
-            ),
+            _buildSummaryItem(title: '운동 시간', value: workout.duration),
             const SizedBox(height: 18),
             _buildSummaryItem(
               title: '거리',
@@ -590,15 +1075,10 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 pickWorkoutImage(workout);
               },
               icon: const Icon(Icons.camera_alt_outlined),
-              label: Text(
-                workout.imageFile == null ? '인증샷 추가' : '인증샷 변경',
-              ),
+              label: Text(workout.imageFile == null ? '인증샷 추가' : '인증샷 변경'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xFF5B5FFF),
-                side: const BorderSide(
-                  color: Color(0xFF5B5FFF),
-                  width: 1.3,
-                ),
+                side: const BorderSide(color: Color(0xFF5B5FFF), width: 1.3),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
@@ -610,10 +1090,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     );
   }
 
-  Widget _buildSummaryItem({
-    required String title,
-    required String value,
-  }) {
+  Widget _buildSummaryItem({required String title, required String value}) {
     return Row(
       children: [
         Text(
@@ -668,14 +1145,13 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       ],
     );
   }
+
   Widget _buildRunningWorkoutView() {
     final goalKm = double.tryParse(runningGoalController.text) ?? 0.0;
     final remainingKm = goalKm - runningDistanceKm;
     final safeRemainingKm = remainingKm < 0 ? 0.0 : remainingKm;
 
-    final pace = runningDistanceKm > 0
-        ? seconds / 60 / runningDistanceKm
-        : 0.0;
+    final pace = runningDistanceKm > 0 ? seconds / 60 / runningDistanceKm : 0.0;
 
     final paceMin = pace.floor();
     final paceSec = ((pace - paceMin) * 60).round();
@@ -723,7 +1199,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
               _buildMainRunningValue(
                 title: '거리',
-                value: '${runningDistanceKm.toStringAsFixed(2)}',
+                value: runningDistanceKm.toStringAsFixed(2),
                 unit: 'km',
                 fontSize: 64,
               ),
@@ -948,26 +1424,10 @@ class _ExerciseRecordCardState extends State<ExerciseRecordCard> {
 
           const Row(
             children: [
-              SizedBox(
-                width: 54,
-                child: Text(
-                  '세트',
-                  style: _tableHeaderStyle,
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  '무게',
-                  style: _tableHeaderStyle,
-                ),
-              ),
+              SizedBox(width: 54, child: Text('세트', style: _tableHeaderStyle)),
+              Expanded(child: Text('무게', style: _tableHeaderStyle)),
               SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  '횟수',
-                  style: _tableHeaderStyle,
-                ),
-              ),
+              Expanded(child: Text('횟수', style: _tableHeaderStyle)),
               SizedBox(width: 12),
               SizedBox(width: 32),
             ],
@@ -1050,10 +1510,7 @@ class _RecordInput extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
 
-  const _RecordInput({
-    required this.controller,
-    required this.hint,
-  });
+  const _RecordInput({required this.controller, required this.hint});
 
   @override
   Widget build(BuildContext context) {
@@ -1095,11 +1552,7 @@ class _SmallCircleButton extends StatelessWidget {
       child: CircleAvatar(
         radius: 18,
         backgroundColor: color,
-        child: Icon(
-          icon,
-          color: Colors.white,
-          size: 20,
-        ),
+        child: Icon(icon, color: Colors.white, size: 20),
       ),
     );
   }
@@ -1107,9 +1560,7 @@ class _SmallCircleButton extends StatelessWidget {
 
 class ExerciseCardData {
   final TextEditingController exerciseNameController = TextEditingController();
-  final List<ExerciseSetData> sets = [
-    ExerciseSetData(),
-  ];
+  final List<ExerciseSetData> sets = [ExerciseSetData()];
 
   void dispose() {
     exerciseNameController.dispose();
@@ -1154,4 +1605,10 @@ class FinishedWorkoutSummary {
     required this.runningDistance,
     required this.runningPace,
   });
+}
+
+class WorkoutValidationException implements Exception {
+  const WorkoutValidationException(this.message);
+
+  final String message;
 }

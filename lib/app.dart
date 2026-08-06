@@ -1,5 +1,8 @@
-import 'screens/login_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+
+import 'screens/login_screen.dart';
+import 'screens/main_screen.dart';
 
 class ShareFitApp extends StatelessWidget {
   const ShareFitApp({super.key});
@@ -32,7 +35,18 @@ class ShareFitApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const LoginScreen(),
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+
+          return snapshot.hasData ? const MainScreen() : const LoginScreen();
+        },
+      ),
     );
   }
 }
