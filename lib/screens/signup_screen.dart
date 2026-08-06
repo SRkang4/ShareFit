@@ -1,5 +1,8 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
+
+import '../services/auth_service.dart';
 import 'main_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -17,10 +20,16 @@ class _SignupScreenState extends State<SignupScreen> {
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _isLoading = false;
 
   static const pointColor = Color(0xFF5B5FFF);
+  final AuthService _authService = AuthService();
 
-  void _signup() {
+  Future<void> _signup() async {
+    if (_isLoading) {
+      return;
+    }
+
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
@@ -63,12 +72,63 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await _authService.signUp(email: email, password: password, name: name);
+    } on FirebaseAuthException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showError(_firebaseErrorMessage(error.code));
+      return;
+    } on FirebaseException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showError(_firebaseErrorMessage(error.code));
+      return;
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      _showError('회원가입 중 오류가 발생했습니다. 다시 시도해주세요.');
+      return;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (context) => const MainScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => const MainScreen()),
     );
+  }
+
+  String _firebaseErrorMessage(String code) {
+    switch (code) {
+      case 'email-already-in-use':
+        return '이미 사용 중인 이메일입니다.';
+      case 'weak-password':
+        return '비밀번호가 너무 약합니다.';
+      case 'invalid-email':
+        return '올바른 이메일 형식이 아닙니다.';
+      case 'network-request-failed':
+        return '네트워크 연결을 확인해주세요.';
+      case 'operation-not-allowed':
+        return '현재 이메일 회원가입을 사용할 수 없습니다.';
+      default:
+        return '회원가입 중 오류가 발생했습니다. 다시 시도해주세요.';
+    }
   }
 
   void _showError(String message) {
@@ -78,16 +138,13 @@ class _SignupScreenState extends State<SignupScreen> {
         color: Colors.transparent,
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 20),
-          padding: const EdgeInsets.symmetric(
-            horizontal: 18,
-            vertical: 16,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           decoration: BoxDecoration(
             color: pointColor,
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withValues(alpha: 0.15),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
@@ -201,9 +258,7 @@ class _SignupScreenState extends State<SignupScreen> {
           builder: (context, constraints) {
             return SingleChildScrollView(
               child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight,
-                ),
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
                 child: IntrinsicHeight(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(24, 20, 24, 28),
@@ -293,7 +348,7 @@ class _SignupScreenState extends State<SignupScreen> {
                             onPressed: () {
                               setState(() {
                                 _obscureConfirmPassword =
-                                !_obscureConfirmPassword;
+                                    !_obscureConfirmPassword;
                               });
                             },
                           ),
@@ -320,23 +375,34 @@ class _SignupScreenState extends State<SignupScreen> {
                           width: double.infinity,
                           height: 58,
                           child: ElevatedButton(
-                            onPressed: _signup,
+                            onPressed: _isLoading ? null : _signup,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: pointColor,
                               foregroundColor: Colors.white,
+                              disabledBackgroundColor: pointColor,
+                              disabledForegroundColor: Colors.white,
                               elevation: 0,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(22),
                               ),
                             ),
-                            child: const Text(
-                              '가입하기',
-                              style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -0.2,
-                              ),
-                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text(
+                                    '가입하기',
+                                    style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: -0.2,
+                                    ),
+                                  ),
                           ),
                         ),
                       ],

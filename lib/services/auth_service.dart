@@ -1,0 +1,84 @@
+import 'dart:math';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+class AuthService {
+  AuthService({
+    FirebaseAuth? firebaseAuth,
+    FirebaseFirestore? firestore,
+    Random? random,
+  }) : _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance,
+       _firestore = firestore ?? FirebaseFirestore.instance,
+       _random = random ?? Random.secure();
+
+  final FirebaseAuth _firebaseAuth;
+  final FirebaseFirestore _firestore;
+  final Random _random;
+
+  Future<void> signUp({
+    required String email,
+    required String password,
+    required String name,
+  }) async {
+    User? createdUser;
+
+    try {
+      final credential = await _firebaseAuth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      createdUser = credential.user;
+
+      if (createdUser == null) {
+        throw FirebaseAuthException(
+          code: 'user-creation-failed',
+          message: 'Firebase Auth 계정 생성 결과에 사용자 정보가 없습니다.',
+        );
+      }
+
+      final friendCode = await _generateUniqueFriendCode();
+
+      await _firestore.collection('users').doc(createdUser.uid).set({
+        'uid': createdUser.uid,
+        'email': email,
+        'name': name,
+        'friendCode': friendCode,
+        'isPro': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (error, stackTrace) {
+      if (createdUser != null) {
+        try {
+          await createdUser.delete();
+        } catch (_) {
+          // Preserve the original signup error after attempting rollback.
+        }
+      }
+
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  Future<String> _generateUniqueFriendCode() async {
+    while (true) {
+      final friendCode = _createFriendCode();
+      final existingUsers = await _firestore
+          .collection('users')
+          .where('friendCode', isEqualTo: friendCode)
+          .limit(1)
+          .get();
+
+      if (existingUsers.docs.isEmpty) {
+        return friendCode;
+      }
+    }
+  }
+
+  String _createFriendCode() {
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    final letter = letters[_random.nextInt(letters.length)];
+    final digits = List.generate(7, (_) => _random.nextInt(10)).join();
+    return '$letter$digits';
+  }
+}

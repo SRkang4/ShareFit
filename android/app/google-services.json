@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "82645132236",
+    "project_id": "sharefit-3d0b0",
+    "storage_bucket": "sharefit-3d0b0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:82645132236:android:b5d952639345a4f1b6b369",
+        "android_client_info": {
+          "package_name": "com.sharefit.app.sharefit"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAoGyR-b69LbT6_-EI3XCabSPPvXiTeLDE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
