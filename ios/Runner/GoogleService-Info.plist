@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>AIzaSyDJpyRvTlz4_J64F1Ws0Nd0ujge3tF9jzQ</string>
+	<key>GCM_SENDER_ID</key>
+	<string>82645132236</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.sharefit.app.sharefit</string>
+	<key>PROJECT_ID</key>
+	<string>sharefit-3d0b0</string>
+	<key>STORAGE_BUCKET</key>
+	<string>sharefit-3d0b0.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:82645132236:ios:4a7541e671c47e54b6b369</string>
+</dict>
+</plist>
