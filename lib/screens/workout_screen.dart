@@ -47,6 +47,9 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   bool isFinishingWorkout = false;
   bool hasShownWeakGpsMessage = false;
   DateTime? workoutStartedAt;
+  Duration accumulatedActiveDuration = Duration.zero;
+  DateTime? activeSegmentStartedAt;
+  AppLifecycleState appLifecycleState = AppLifecycleState.resumed;
   String? lastErrorMessage;
   DateTime? lastErrorShownAt;
 
@@ -73,15 +76,15 @@ class _WorkoutScreenState extends State<WorkoutScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if ((state == AppLifecycleState.inactive ||
-            state == AppLifecycleState.paused) &&
+    appLifecycleState = state;
+    if (state == AppLifecycleState.resumed &&
         isWorkoutStarted &&
-        selectedWorkoutType == '러닝' &&
-        !isPaused) {
+        !isPaused &&
+        mounted) {
+      final currentSeconds = _activeDurationAt(DateTime.now()).inSeconds;
       setState(() {
-        isPaused = true;
+        seconds = currentSeconds;
       });
-      unawaited(_stopRunningLocationTracking());
     }
   }
 
@@ -117,6 +120,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       }
     }
 
+    final startedAt = DateTime.now();
     setState(() {
       if (isWorkoutFinished) {
         resetCurrentWorkout();
@@ -126,7 +130,9 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       isWorkoutStarted = true;
       isPaused = false;
       seconds = 0;
-      workoutStartedAt = DateTime.now();
+      workoutStartedAt = startedAt;
+      accumulatedActiveDuration = Duration.zero;
+      activeSegmentStartedAt = startedAt;
       if (selectedWorkoutType != '러닝') {
         runningDistanceMeters = 0.0;
         lastRunningPosition = null;
@@ -162,8 +168,17 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     }
 
     if (selectedWorkoutType != '러닝') {
+      final now = DateTime.now();
       setState(() {
-        isPaused = !isPaused;
+        if (isPaused) {
+          isPaused = false;
+          activeSegmentStartedAt = now;
+        } else {
+          accumulatedActiveDuration = _activeDurationAt(now);
+          activeSegmentStartedAt = null;
+          seconds = accumulatedActiveDuration.inSeconds;
+          isPaused = true;
+        }
       });
       return;
     }
@@ -171,7 +186,11 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     isChangingPauseState = true;
 
     if (!isPaused) {
+      final now = DateTime.now();
       setState(() {
+        accumulatedActiveDuration = _activeDurationAt(now);
+        activeSegmentStartedAt = null;
+        seconds = accumulatedActiveDuration.inSeconds;
         isPaused = true;
       });
       await _stopRunningLocationTracking();
@@ -193,8 +212,10 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       await locationTrackingService.stop();
       return;
     }
+    final resumedAt = DateTime.now();
     setState(() {
       isPaused = false;
+      activeSegmentStartedAt = resumedAt;
     });
     isChangingPauseState = false;
   }
@@ -205,7 +226,8 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     }
 
     final endedAt = DateTime.now();
-    final durationSeconds = seconds;
+    final finalActiveDuration = _activeDurationAt(endedAt);
+    final durationSeconds = finalActiveDuration.inSeconds;
     late final WorkoutRecord workoutRecord;
 
     try {
@@ -223,6 +245,9 @@ class _WorkoutScreenState extends State<WorkoutScreen>
 
     final wasPaused = isPaused;
     setState(() {
+      accumulatedActiveDuration = finalActiveDuration;
+      activeSegmentStartedAt = null;
+      seconds = durationSeconds;
       isFinishingWorkout = true;
       isPaused = true;
     });
@@ -257,14 +282,18 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       var resumed = wasPaused;
       if (!wasPaused) {
         if (selectedWorkoutType == '러닝') {
-          try {
-            await _startRunningLocationTracking();
-            resumed = true;
-          } catch (error) {
-            resumed = false;
-            if (mounted) {
-              _showLocationError(error);
+          if (_isAppInForeground) {
+            try {
+              await _startRunningLocationTracking();
+              resumed = true;
+            } catch (error) {
+              resumed = false;
+              if (mounted) {
+                _showLocationError(error);
+              }
             }
+          } else {
+            resumed = false;
           }
         } else {
           resumed = true;
@@ -277,6 +306,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       setState(() {
         isFinishingWorkout = false;
         isPaused = wasPaused || !resumed;
+        activeSegmentStartedAt = isPaused ? null : DateTime.now();
       });
       if (!isPaused) {
         _startActiveTimer();
@@ -306,6 +336,8 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       isWorkoutFinished = true;
       isFinishingWorkout = false;
       workoutStartedAt = null;
+      accumulatedActiveDuration = Duration.zero;
+      activeSegmentStartedAt = null;
     });
   }
 
@@ -420,10 +452,24 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       if (!mounted || isPaused) {
         return;
       }
-      setState(() {
-        seconds++;
-      });
+      final currentSeconds = _activeDurationAt(DateTime.now()).inSeconds;
+      if (currentSeconds != seconds) {
+        setState(() {
+          seconds = currentSeconds;
+        });
+      }
     });
+  }
+
+  bool get _isAppInForeground =>
+      appLifecycleState == AppLifecycleState.resumed;
+
+  Duration _activeDurationAt(DateTime now) {
+    final segmentStartedAt = activeSegmentStartedAt;
+    if (segmentStartedAt == null || isPaused || now.isBefore(segmentStartedAt)) {
+      return accumulatedActiveDuration;
+    }
+    return accumulatedActiveDuration + now.difference(segmentStartedAt);
   }
 
   String _formatDuration(int durationSeconds) {
