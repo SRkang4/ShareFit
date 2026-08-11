@@ -16,10 +16,7 @@ class AuthService {
   final FirebaseFirestore _firestore;
   final Random _random;
 
-  Future<void> signIn({
-    required String email,
-    required String password,
-  }) async {
+  Future<void> signIn({required String email, required String password}) async {
     await _firebaseAuth.signInWithEmailAndPassword(
       email: email,
       password: password,
@@ -47,16 +44,11 @@ class AuthService {
         );
       }
 
-      final friendCode = await _generateUniqueFriendCode();
-
-      await _firestore.collection('users').doc(createdUser.uid).set({
-        'uid': createdUser.uid,
-        'email': email,
-        'name': name,
-        'friendCode': friendCode,
-        'isPro': false,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      await _createUserDocuments(
+        uid: createdUser.uid,
+        email: email,
+        name: name,
+      );
     } catch (error, stackTrace) {
       if (createdUser != null) {
         try {
@@ -70,17 +62,48 @@ class AuthService {
     }
   }
 
-  Future<String> _generateUniqueFriendCode() async {
+  Future<void> _createUserDocuments({
+    required String uid,
+    required String email,
+    required String name,
+  }) async {
     while (true) {
       final friendCode = _createFriendCode();
-      final existingUsers = await _firestore
-          .collection('users')
-          .where('friendCode', isEqualTo: friendCode)
-          .limit(1)
-          .get();
+      final userRef = _firestore.collection('users').doc(uid);
+      final codeRef = _firestore.collection('friendCodes').doc(friendCode);
+      final profileRef = _firestore.collection('publicProfiles').doc(uid);
 
-      if (existingUsers.docs.isEmpty) {
-        return friendCode;
+      final created = await _firestore.runTransaction((transaction) async {
+        final codeDocument = await transaction.get(codeRef);
+        if (codeDocument.exists) {
+          return false;
+        }
+
+        transaction.set(userRef, {
+          'uid': uid,
+          'email': email,
+          'name': name,
+          'friendCode': friendCode,
+          'isPro': false,
+          'friendCount': 0,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        transaction.set(codeRef, {
+          'uid': uid,
+          'active': true,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        transaction.set(profileRef, {
+          'uid': uid,
+          'name': name,
+          'friendCode': friendCode,
+          'active': true,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        return true;
+      });
+      if (created) {
+        return;
       }
     }
   }
@@ -107,10 +130,37 @@ class AuthService {
       );
     }
 
-    await _firestore.collection('users').doc(user.uid).update({
+    final currentUserDocument = await _firestore
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    final friendCode = currentUserDocument.data()?['friendCode'] as String?;
+    if (friendCode == null || friendCode.isEmpty) {
+      throw FirebaseException(
+        plugin: 'cloud_firestore',
+        code: 'friend-code-not-found',
+        message: '친구 코드를 확인할 수 없습니다.',
+      );
+    }
+
+    final batch = _firestore.batch();
+    batch.update(_firestore.collection('users').doc(user.uid), {
       'name': name,
       'experienceStartDate': Timestamp.fromDate(experienceStartDate),
     });
+    batch.set(
+      _firestore.collection('publicProfiles').doc(user.uid),
+      {
+        'uid': user.uid,
+        'name': name,
+        'friendCode': friendCode,
+        'active': true,
+        'experienceStartDate': Timestamp.fromDate(experienceStartDate),
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+    await batch.commit();
   }
 
   Future<void> signOut() async {
@@ -127,7 +177,36 @@ class AuthService {
     final snapshot = await userDocument.get();
     final userData = snapshot.data();
 
-    await userDocument.delete();
+    final friends = await userDocument.collection('friends').limit(1).get();
+    if (friends.docs.isNotEmpty) {
+      throw FirebaseException(
+        plugin: 'cloud_firestore',
+        code: 'friends-exist',
+        message: '친구 관계를 먼저 삭제해주세요.',
+      );
+    }
+
+    final receivedRequests = await _firestore
+        .collection('friendRequests')
+        .where('toUid', isEqualTo: user.uid)
+        .where('status', isEqualTo: 'pending')
+        .get();
+    final sentRequests = await _firestore
+        .collection('friendRequests')
+        .where('fromUid', isEqualTo: user.uid)
+        .where('status', isEqualTo: 'pending')
+        .get();
+    final cleanup = _firestore.batch();
+    for (final request in [...receivedRequests.docs, ...sentRequests.docs]) {
+      cleanup.delete(request.reference);
+    }
+    final friendCode = userData?['friendCode'] as String?;
+    if (friendCode != null && friendCode.isNotEmpty) {
+      cleanup.delete(_firestore.collection('friendCodes').doc(friendCode));
+    }
+    cleanup.delete(_firestore.collection('publicProfiles').doc(user.uid));
+    cleanup.delete(userDocument);
+    await cleanup.commit();
 
     try {
       await user.delete();

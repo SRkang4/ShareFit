@@ -1,0 +1,243 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function pairId(firstUid, secondUid) {
+      return firstUid < secondUid
+          ? firstUid + '_' + secondUid
+          : secondUid + '_' + firstUid;
+    }
+
+    function requestPath(requestId) {
+      return /databases/$(database)/documents/friendRequests/$(requestId);
+    }
+
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function friendPath(uid, friendUid) {
+      return /databases/$(database)/documents/users/$(uid)/friends/$(friendUid);
+    }
+
+    function profilePath(uid) {
+      return /databases/$(database)/documents/publicProfiles/$(uid);
+    }
+
+    function validFriendLimit(userData) {
+      return userData.friendCount >= 0 &&
+          (userData.isPro == true || userData.friendCount <= 5);
+    }
+
+    function isProfileUpdate(uid) {
+      return request.auth.uid == uid &&
+          request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['name', 'experienceStartDate']) &&
+          request.resource.data.uid == resource.data.uid &&
+          request.resource.data.email == resource.data.email &&
+          request.resource.data.friendCode == resource.data.friendCode &&
+          request.resource.data.isPro == resource.data.isPro &&
+          request.resource.data.get('friendCount', 0) ==
+              resource.data.get('friendCount', 0);
+    }
+
+    function isLegacyFriendCountMigration(uid) {
+      return request.auth.uid == uid &&
+          !('friendCount' in resource.data) &&
+          request.resource.data.friendCount == 0 &&
+          request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['friendCount']);
+    }
+
+    function validAcceptCounterMutation(uid) {
+      let mutation = request.resource.data._friendMutation;
+      let friendUid = mutation.friendUid;
+      let id = mutation.requestId;
+      let beforeRequest = get(requestPath(id)).data;
+      let afterRequest = getAfter(requestPath(id)).data;
+      return mutation.type == 'accept' &&
+          id == pairId(uid, friendUid) &&
+          beforeRequest.status == 'pending' &&
+          afterRequest.status == 'accepted' &&
+          afterRequest.fromUid == beforeRequest.fromUid &&
+          afterRequest.toUid == beforeRequest.toUid &&
+          request.auth.uid == beforeRequest.toUid &&
+          ((beforeRequest.fromUid == uid && beforeRequest.toUid == friendUid) ||
+           (beforeRequest.fromUid == friendUid && beforeRequest.toUid == uid)) &&
+          request.resource.data.friendCount == resource.data.friendCount + 1 &&
+          validFriendLimit(request.resource.data) &&
+          existsAfter(friendPath(uid, friendUid)) &&
+          existsAfter(friendPath(friendUid, uid)) &&
+          request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['friendCount', '_friendMutation']);
+    }
+
+    function validDeleteCounterMutation(uid) {
+      let mutation = request.resource.data._friendMutation;
+      let friendUid = mutation.friendUid;
+      let id = mutation.requestId;
+      return mutation.type == 'delete' &&
+          id == pairId(uid, friendUid) &&
+          request.auth.uid in [uid, friendUid] &&
+          get(requestPath(id)).data.status == 'accepted' &&
+          !existsAfter(requestPath(id)) &&
+          exists(friendPath(uid, friendUid)) &&
+          exists(friendPath(friendUid, uid)) &&
+          !existsAfter(friendPath(uid, friendUid)) &&
+          !existsAfter(friendPath(friendUid, uid)) &&
+          request.resource.data.friendCount == resource.data.friendCount - 1 &&
+          request.resource.data.friendCount >= 0 &&
+          request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['friendCount', '_friendMutation']);
+    }
+
+    match /users/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list: if false;
+
+      allow create: if signedIn() && request.auth.uid == uid &&
+          request.resource.data.uid == uid &&
+          request.resource.data.isPro == false &&
+          request.resource.data.friendCount == 0;
+
+      allow update: if signedIn() && (
+          isProfileUpdate(uid) ||
+          isLegacyFriendCountMigration(uid) ||
+          validAcceptCounterMutation(uid) ||
+          validDeleteCounterMutation(uid)
+        );
+
+      allow delete: if signedIn() && request.auth.uid == uid &&
+          (!('friendCount' in resource.data) || resource.data.friendCount == 0);
+
+      match /workouts/{workoutId} {
+        allow read, create, update, delete: if signedIn() && request.auth.uid == uid;
+      }
+
+      match /friends/{friendUid} {
+        allow read: if signedIn() && request.auth.uid == uid;
+
+        allow create: if signedIn() &&
+            request.resource.data.friendUid == friendUid &&
+            request.resource.data.requestId == pairId(uid, friendUid) &&
+            get(requestPath(request.resource.data.requestId)).data.status == 'pending' &&
+            getAfter(requestPath(request.resource.data.requestId)).data.status == 'accepted' &&
+            request.auth.uid == get(requestPath(request.resource.data.requestId)).data.toUid &&
+            existsAfter(friendPath(friendUid, uid)) &&
+            getAfter(userPath(uid)).data.friendCount == get(userPath(uid)).data.friendCount + 1 &&
+            getAfter(userPath(friendUid)).data.friendCount == get(userPath(friendUid)).data.friendCount + 1 &&
+            validFriendLimit(getAfter(userPath(uid)).data) &&
+            validFriendLimit(getAfter(userPath(friendUid)).data);
+
+        allow update: if false;
+
+        allow delete: if signedIn() && request.auth.uid in [uid, friendUid] &&
+            resource.data.requestId == pairId(uid, friendUid) &&
+            !existsAfter(friendPath(friendUid, uid)) &&
+            !existsAfter(requestPath(resource.data.requestId)) &&
+            getAfter(userPath(uid)).data.friendCount == get(userPath(uid)).data.friendCount - 1 &&
+            getAfter(userPath(friendUid)).data.friendCount == get(userPath(friendUid)).data.friendCount - 1;
+      }
+    }
+
+    match /publicProfiles/{uid} {
+      allow get: if signedIn();
+      allow list: if false;
+
+      allow create: if signedIn() && request.auth.uid == uid &&
+          request.resource.data.keys().hasOnly(
+              ['uid', 'name', 'friendCode', 'active',
+               'experienceStartDate', 'updatedAt']) &&
+          request.resource.data.uid == uid &&
+          request.resource.data.active == true &&
+          request.resource.data.name == getAfter(userPath(uid)).data.name &&
+          request.resource.data.friendCode == getAfter(userPath(uid)).data.friendCode &&
+          request.resource.data.get('experienceStartDate', null) ==
+              getAfter(userPath(uid)).data.get('experienceStartDate', null);
+
+      allow update: if signedIn() && request.auth.uid == uid &&
+          request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['name', 'experienceStartDate', 'updatedAt']) &&
+          request.resource.data.name == getAfter(userPath(uid)).data.name &&
+          request.resource.data.get('experienceStartDate', null) ==
+              getAfter(userPath(uid)).data.get('experienceStartDate', null);
+
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /friendCodes/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+
+      allow create: if signedIn() &&
+          request.resource.data.keys().hasOnly(['uid', 'active', 'createdAt']) &&
+          request.resource.data.uid == request.auth.uid &&
+          request.resource.data.active == true &&
+          getAfter(userPath(request.auth.uid)).data.friendCode == code;
+
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    match /friendRequests/{id} {
+      allow get: if signedIn() &&
+          request.auth.uid in [resource.data.fromUid, resource.data.toUid];
+      allow list: if signedIn() &&
+          resource.data.status == 'pending' &&
+          resource.data.fromUid == request.auth.uid;
+      allow list: if signedIn() &&
+          resource.data.status == 'pending' &&
+          resource.data.toUid == request.auth.uid;
+
+      allow create: if signedIn() &&
+          request.resource.data.keys().hasOnly(
+              ['fromUid', 'toUid', 'status', 'createdAt', 'updatedAt']) &&
+          request.resource.data.fromUid == request.auth.uid &&
+          request.resource.data.toUid != request.auth.uid &&
+          request.resource.data.status == 'pending' &&
+          id == pairId(request.resource.data.fromUid, request.resource.data.toUid) &&
+          get(profilePath(request.resource.data.fromUid)).data.active == true &&
+          get(profilePath(request.resource.data.toUid)).data.active == true &&
+          !exists(friendPath(request.resource.data.fromUid, request.resource.data.toUid)) &&
+          !exists(friendPath(request.resource.data.toUid, request.resource.data.fromUid));
+
+      allow update: if signedIn() &&
+          resource.data.status == 'pending' &&
+          request.resource.data.status == 'accepted' &&
+          request.auth.uid == resource.data.toUid &&
+          request.resource.data.fromUid == resource.data.fromUid &&
+          request.resource.data.toUid == resource.data.toUid &&
+          request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'updatedAt']) &&
+          existsAfter(friendPath(resource.data.fromUid, resource.data.toUid)) &&
+          existsAfter(friendPath(resource.data.toUid, resource.data.fromUid)) &&
+          getAfter(userPath(resource.data.fromUid)).data.friendCount ==
+              get(userPath(resource.data.fromUid)).data.friendCount + 1 &&
+          getAfter(userPath(resource.data.toUid)).data.friendCount ==
+              get(userPath(resource.data.toUid)).data.friendCount + 1 &&
+          validFriendLimit(getAfter(userPath(resource.data.fromUid)).data) &&
+          validFriendLimit(getAfter(userPath(resource.data.toUid)).data);
+
+      allow delete: if signedIn() && (
+          (resource.data.status == 'pending' &&
+           request.auth.uid in [resource.data.fromUid, resource.data.toUid]) ||
+          (resource.data.status == 'accepted' &&
+           request.auth.uid in [resource.data.fromUid, resource.data.toUid] &&
+           !existsAfter(friendPath(resource.data.fromUid, resource.data.toUid)) &&
+           !existsAfter(friendPath(resource.data.toUid, resource.data.fromUid)) &&
+           getAfter(userPath(resource.data.fromUid)).data.friendCount ==
+               get(userPath(resource.data.fromUid)).data.friendCount - 1 &&
+           getAfter(userPath(resource.data.toUid)).data.friendCount ==
+               get(userPath(resource.data.toUid)).data.friendCount - 1)
+        );
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -8,6 +8,7 @@ import 'package:top_snackbar_flutter/top_snack_bar.dart';
 import '../models/workout_record.dart';
 import '../services/auth_service.dart';
 import '../services/workout_service.dart';
+import '../utils/experience_formatter.dart';
 import 'settings_screen.dart';
 
 class MyPageScreen extends StatefulWidget {
@@ -419,33 +420,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
   }
 
   String _experienceText() {
-    final startDate = experienceStartDate;
-    if (startDate == null) {
-      return '운동 경력 미설정';
-    }
-
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final normalizedStart = DateTime(
-      startDate.year,
-      startDate.month,
-      startDate.day,
-    );
-    if (normalizedStart.isAfter(today)) {
-      return '운동 경력 미설정';
-    }
-
-    var completedYears = today.year - normalizedStart.year;
-    final anniversary = DateTime(
-      today.year,
-      normalizedStart.month,
-      normalizedStart.day,
-    );
-    if (today.isBefore(anniversary)) {
-      completedYears--;
-    }
-
-    return '운동 ${completedYears + 1}년차';
+    return formatWorkoutExperience(experienceStartDate);
   }
 
   void _showError(String message) {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/friend_service.dart';
 import 'friends_screen.dart';
 import 'home_screen.dart';
 import 'my_page_screen.dart';
@@ -15,6 +16,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int selectedIndex = 0;
+  final FriendService _friendService = FriendService();
 
   final List<Widget> screens = const [
     HomeScreen(),
@@ -27,10 +29,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: selectedIndex,
-        children: screens,
-      ),
+      body: IndexedStack(index: selectedIndex, children: screens),
 
       bottomNavigationBar: Container(
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
@@ -51,64 +50,112 @@ class _MainScreenState extends State<MainScreen> {
 
             indicatorColor: const Color(0xFF7C82FF),
 
-            iconTheme: WidgetStateProperty.resolveWith<IconThemeData>(
-                  (states) {
-                return const IconThemeData(
-                  color: Colors.white,
-                  size: 24,
-                );
-              },
-            ),
+            iconTheme: WidgetStateProperty.resolveWith<IconThemeData>((states) {
+              return const IconThemeData(color: Colors.white, size: 24);
+            }),
 
-            labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>(
-                  (states) {
-                return const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                );
-              },
-            ),
+            labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>((
+              states,
+            ) {
+              return const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              );
+            }),
           ),
 
-          child: NavigationBar(
-            height: 72,
-            selectedIndex: selectedIndex,
+          child: StreamBuilder<bool>(
+            stream: _friendService.watchHasReceivedPendingRequests(),
+            initialData: false,
+            builder: (context, snapshot) {
+              final hasPendingRequest = snapshot.data ?? false;
+              return NavigationBar(
+                height: 72,
+                selectedIndex: selectedIndex,
 
-            onDestinationSelected: (index) {
-              setState(() {
-                selectedIndex = index;
-              });
+                onDestinationSelected: (index) {
+                  setState(() {
+                    selectedIndex = index;
+                  });
+                },
+
+                destinations: [
+                  const NavigationDestination(
+                    icon: Icon(Icons.home_outlined),
+                    selectedIcon: Icon(Icons.home),
+                    label: '홈',
+                  ),
+                  const NavigationDestination(
+                    icon: Icon(Icons.fitness_center_outlined),
+                    selectedIcon: Icon(Icons.fitness_center),
+                    label: '운동',
+                  ),
+                  NavigationDestination(
+                    icon: _friendNavigationIcon(
+                      icon: Icons.people_outline,
+                      showBadge: hasPendingRequest,
+                    ),
+                    selectedIcon: _friendNavigationIcon(
+                      icon: Icons.people,
+                      showBadge: hasPendingRequest,
+                    ),
+                    label: '친구',
+                  ),
+                  const NavigationDestination(
+                    icon: Icon(Icons.emoji_events_outlined),
+                    selectedIcon: Icon(Icons.emoji_events),
+                    label: '랭킹',
+                  ),
+                  const NavigationDestination(
+                    icon: Icon(Icons.person_outline),
+                    selectedIcon: Icon(Icons.person),
+                    label: '마이',
+                  ),
+                ],
+              );
             },
-
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.home_outlined),
-                selectedIcon: Icon(Icons.home),
-                label: '홈',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.fitness_center_outlined),
-                selectedIcon: Icon(Icons.fitness_center),
-                label: '운동',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.people_outline),
-                selectedIcon: Icon(Icons.people),
-                label: '친구',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.emoji_events_outlined),
-                selectedIcon: Icon(Icons.emoji_events),
-                label: '랭킹',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.person_outline),
-                selectedIcon: Icon(Icons.person),
-                label: '마이',
-              ),
-            ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _friendNavigationIcon({
+    required IconData icon,
+    required bool showBadge,
+  }) {
+    return SizedBox(
+      width: 32,
+      height: 28,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          Icon(icon),
+          if (showBadge)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: Container(
+                width: 14,
+                height: 14,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFF3B4F),
+                  shape: BoxShape.circle,
+                ),
+                child: const Text(
+                  '!',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    height: 1,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
