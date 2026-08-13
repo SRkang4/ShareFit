@@ -8,6 +8,7 @@ class WorkoutRecord {
     required this.startedAt,
     required this.endedAt,
     required this.durationSeconds,
+    this.photoUrl,
     this.strength,
     this.running,
   });
@@ -18,6 +19,7 @@ class WorkoutRecord {
   final DateTime startedAt;
   final DateTime endedAt;
   final int durationSeconds;
+  final String? photoUrl;
   final StrengthWorkoutData? strength;
   final RunningWorkoutData? running;
 
@@ -30,7 +32,7 @@ class WorkoutRecord {
       'endedAt': Timestamp.fromDate(endedAt),
       'durationSeconds': durationSeconds,
       'createdAt': FieldValue.serverTimestamp(),
-      'photoUrl': null,
+      'photoUrl': photoUrl,
       if (strength != null) 'strength': strength!.toFirestore(),
       if (running != null) 'running': running!.toFirestore(),
     };
@@ -58,6 +60,7 @@ class WorkoutRecord {
       startedAt: startedAt.toDate(),
       endedAt: endedAt.toDate(),
       durationSeconds: durationSeconds.toInt(),
+      photoUrl: data['photoUrl'] is String ? data['photoUrl'] as String : null,
       strength: data['strength'] is Map<String, dynamic>
           ? StrengthWorkoutData.fromFirestore(
               data['strength'] as Map<String, dynamic>,

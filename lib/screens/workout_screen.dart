@@ -8,10 +8,14 @@ import 'package:top_snackbar_flutter/top_snack_bar.dart';
 
 import '../models/workout_record.dart';
 import '../services/location_tracking_service.dart';
+import '../services/public_activity_service.dart';
 import '../services/workout_service.dart';
+import '../widgets/workout_history_card.dart';
 
 class WorkoutScreen extends StatefulWidget {
-  const WorkoutScreen({super.key});
+  const WorkoutScreen({super.key, this.isActive = true});
+
+  final bool isActive;
 
   @override
   State<WorkoutScreen> createState() => _WorkoutScreenState();
@@ -26,15 +30,19 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   bool isWorkoutStarted = false;
   bool isWorkoutFinished = false;
 
-  final List<String> bodyParts = ['가슴', '등', '어깨', '하체', '이두', '삼두'];
+  final List<String> bodyParts = ['가슴', '등', '어깨', '하체', '팔'];
   final Set<String> selectedBodyParts = {};
 
   final List<ExerciseCardData> exercises = [ExerciseCardData()];
-  final List<FinishedWorkoutSummary> finishedWorkouts = [];
+  final Map<String, WorkoutRecord> locallyCompletedWorkouts = {};
+  final Map<String, File> workoutImages = {};
   final TextEditingController runningGoalController = TextEditingController();
   final LocationTrackingService locationTrackingService =
       LocationTrackingService();
   final WorkoutService workoutService = WorkoutService();
+  final PublicActivityService publicActivityService = PublicActivityService();
+  late final Stream<List<WorkoutRecord>> todayWorkoutsStream;
+  String? justCompletedWorkoutId;
   double runningDistanceMeters = 0.0;
   Position? lastRunningPosition;
   int validRunningLocationCount = 0;
@@ -59,6 +67,19 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    todayWorkoutsStream = workoutService.watchTodayWorkouts();
+  }
+
+  @override
+  void didUpdateWidget(covariant WorkoutScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isActive &&
+        !widget.isActive &&
+        justCompletedWorkoutId != null) {
+      setState(() {
+        justCompletedWorkoutId = null;
+      });
+    }
   }
 
   @override
@@ -92,11 +113,11 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     if (isStartingWorkout) {
       return;
     }
+    setState(() {
+      isStartingWorkout = true;
+    });
 
     if (selectedWorkoutType == '러닝') {
-      setState(() {
-        isStartingWorkout = true;
-      });
       runningDistanceMeters = 0.0;
       lastRunningPosition = null;
       validRunningLocationCount = 0;
@@ -121,6 +142,21 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     }
 
     final startedAt = DateTime.now();
+    try {
+      await publicActivityService.markWorkoutStarted(
+        workoutType: selectedWorkoutType == '러닝' ? 'running' : 'strength',
+        startedAt: startedAt,
+      );
+    } catch (_) {
+      if (selectedWorkoutType == '러닝') {
+        await _stopRunningLocationTracking();
+      }
+      if (!mounted) return;
+      setState(() => isStartingWorkout = false);
+      _showError('운동 상태를 시작하지 못했습니다. 다시 시도해주세요.');
+      return;
+    }
+    if (!mounted) return;
     setState(() {
       if (isWorkoutFinished) {
         resetCurrentWorkout();
@@ -272,8 +308,9 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       }
     }
 
+    late final String workoutId;
     try {
-      await workoutService.saveCompletedWorkout(workoutRecord);
+      workoutId = await workoutService.saveCompletedWorkout(workoutRecord);
     } catch (_) {
       if (!mounted) {
         return;
@@ -315,25 +352,22 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       return;
     }
 
-    final strength = workoutRecord.strength;
-    final running = workoutRecord.running;
-    final averagePace = running?.averagePaceSecondsPerKm;
-
     setState(() {
-      finishedWorkouts.insert(
-        0,
-        FinishedWorkoutSummary(
-          workoutType: selectedWorkoutType,
-          duration: _formatDuration(durationSeconds),
-          exerciseCount: strength?.exercises.length ?? 0,
-          totalSets: strength?.completedSetCount ?? 0,
-          runningDistance: (running?.distanceMeters ?? 0) / 1000,
-          runningPace: averagePace == null ? '-' : _formatPace(averagePace),
-        ),
+      locallyCompletedWorkouts[workoutId] = WorkoutRecord(
+        id: workoutId,
+        userId: workoutRecord.userId,
+        type: workoutRecord.type,
+        startedAt: workoutRecord.startedAt,
+        endedAt: workoutRecord.endedAt,
+        durationSeconds: workoutRecord.durationSeconds,
+        photoUrl: workoutRecord.photoUrl,
+        strength: workoutRecord.strength,
+        running: workoutRecord.running,
       );
       isWorkoutStarted = false;
       isPaused = false;
       isWorkoutFinished = true;
+      justCompletedWorkoutId = workoutId;
       isFinishingWorkout = false;
       workoutStartedAt = null;
       accumulatedActiveDuration = Duration.zero;
@@ -461,12 +495,13 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     });
   }
 
-  bool get _isAppInForeground =>
-      appLifecycleState == AppLifecycleState.resumed;
+  bool get _isAppInForeground => appLifecycleState == AppLifecycleState.resumed;
 
   Duration _activeDurationAt(DateTime now) {
     final segmentStartedAt = activeSegmentStartedAt;
-    if (segmentStartedAt == null || isPaused || now.isBefore(segmentStartedAt)) {
+    if (segmentStartedAt == null ||
+        isPaused ||
+        now.isBefore(segmentStartedAt)) {
       return accumulatedActiveDuration;
     }
     return accumulatedActiveDuration + now.difference(segmentStartedAt);
@@ -669,7 +704,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     );
   }
 
-  Future<void> pickWorkoutImage(FinishedWorkoutSummary workout) async {
+  Future<void> pickWorkoutImage(String workoutId) async {
     final picker = ImagePicker();
 
     final pickedImage = await picker.pickImage(
@@ -680,7 +715,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     if (pickedImage == null) return;
 
     setState(() {
-      workout.imageFile = File(pickedImage.path);
+      workoutImages[workoutId] = File(pickedImage.path);
     });
   }
 
@@ -732,25 +767,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
             const SizedBox(height: 26),
 
             if (!isWorkoutStarted) ...[
-              ...finishedWorkouts.map(
-                (workout) => _buildFinishedWorkoutCard(workout),
-              ),
-
-              if (finishedWorkouts.isNotEmpty) const SizedBox(height: 30),
-
-              _buildWorkoutTypeSelector(),
-              const SizedBox(height: 26),
-
-              if (selectedWorkoutType == '헬스') ...[
-                _buildBodyPartSelector(),
-                const SizedBox(height: 32),
-              ],
-              if (selectedWorkoutType == '러닝') ...[
-                _buildRunningGoalInput(),
-                const SizedBox(height: 32),
-              ],
-
-              _buildStartButton(),
+              _buildIdleWorkoutContent(),
             ] else ...[
               if (selectedWorkoutType == '헬스') ...[
                 _buildExerciseController(),
@@ -1051,6 +1068,102 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     );
   }
 
+  Widget _buildIdleWorkoutContent() {
+    return StreamBuilder<List<WorkoutRecord>>(
+      stream: todayWorkoutsStream,
+      initialData: const [],
+      builder: (context, snapshot) {
+        final records =
+            snapshot.data?.toList(growable: true) ?? <WorkoutRecord>[];
+        final justCompletedId = justCompletedWorkoutId;
+        WorkoutRecord? justCompleted;
+        if (justCompletedId != null) {
+          for (final record in records) {
+            if (record.id == justCompletedId) {
+              justCompleted = record;
+              break;
+            }
+          }
+          justCompleted ??= locallyCompletedWorkouts[justCompletedId];
+        }
+        final previousRecords = records
+            .where((record) => record.id != justCompletedId)
+            .toList();
+        final workoutSetup = <Widget>[
+          _buildWorkoutTypeSelector(),
+          const SizedBox(height: 26),
+          if (selectedWorkoutType == '헬스') ...[
+            _buildBodyPartSelector(),
+            const SizedBox(height: 32),
+          ],
+          if (selectedWorkoutType == '러닝') ...[
+            _buildRunningGoalInput(),
+            const SizedBox(height: 32),
+          ],
+          _buildStartButton(),
+        ];
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (justCompleted != null) ...[
+              _buildHistoryCard(justCompleted, title: '오늘 운동 완료'),
+              const SizedBox(height: 10),
+            ],
+            ...workoutSetup,
+            if (previousRecords.isNotEmpty) ...[
+              const SizedBox(height: 30),
+              const Text(
+                '오늘 운동 완료',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF111111),
+                ),
+              ),
+              const SizedBox(height: 16),
+              for (final record in previousRecords) _buildHistoryCard(record),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildHistoryCard(WorkoutRecord workout, {String? title}) {
+    final workoutId = workout.id;
+    return WorkoutHistoryCard(
+      key: ValueKey(workoutId),
+      workout: workout,
+      title: title,
+      imageFile: workoutId == null ? null : workoutImages[workoutId],
+      onPhotoPressed: workoutId == null
+          ? null
+          : () => pickWorkoutImage(workoutId),
+    );
+  }
+
+  // Legacy adapter retained for local image compatibility.
+  // ignore: unused_element
+  FinishedWorkoutSummary _summaryFromRecord(WorkoutRecord record) {
+    final strength = record.strength;
+    final running = record.running;
+    final averagePace = running?.averagePaceSecondsPerKm;
+    return FinishedWorkoutSummary(
+      id: record.id,
+      workoutType: record.type == 'running' ? '러닝' : '헬스',
+      duration: _formatDuration(record.durationSeconds),
+      exerciseCount: strength?.exercises.length ?? 0,
+      totalSets: strength?.completedSetCount ?? 0,
+      totalVolumeKg: strength?.totalVolumeKg ?? 0,
+      runningDistance: (running?.distanceMeters ?? 0) / 1000,
+      runningPace: averagePace == null ? '-' : _formatPace(averagePace),
+      photoUrl: record.photoUrl,
+      imageFile: record.id == null ? null : workoutImages[record.id],
+    );
+  }
+
+  // ignore: unused_element
   Widget _buildFinishedWorkoutCard(FinishedWorkoutSummary workout) {
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
@@ -1083,6 +1196,11 @@ class _WorkoutScreenState extends State<WorkoutScreen>
             ),
             const SizedBox(height: 18),
             _buildSummaryItem(title: '완료 세트', value: '${workout.totalSets}세트'),
+            const SizedBox(height: 18),
+            _buildSummaryItem(
+              title: '운동 볼륨',
+              value: '${workout.totalVolumeKg.toStringAsFixed(1)} kg',
+            ),
           ] else ...[
             _buildSummaryItem(title: '운동 종류', value: workout.workoutType),
             const SizedBox(height: 18),
@@ -1111,6 +1229,19 @@ class _WorkoutScreenState extends State<WorkoutScreen>
               ),
             ),
             const SizedBox(height: 14),
+          ] else if (workout.photoUrl != null) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(22),
+              child: Image.network(
+                workout.photoUrl!,
+                width: double.infinity,
+                height: 180,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) =>
+                    const SizedBox.shrink(),
+              ),
+            ),
+            const SizedBox(height: 14),
           ],
 
           SizedBox(
@@ -1118,10 +1249,17 @@ class _WorkoutScreenState extends State<WorkoutScreen>
             height: 52,
             child: OutlinedButton.icon(
               onPressed: () {
-                pickWorkoutImage(workout);
+                final workoutId = workout.id;
+                if (workoutId != null) {
+                  pickWorkoutImage(workoutId);
+                }
               },
               icon: const Icon(Icons.camera_alt_outlined),
-              label: Text(workout.imageFile == null ? '인증샷 추가' : '인증샷 변경'),
+              label: Text(
+                workout.imageFile == null && workout.photoUrl == null
+                    ? '인증샷 추가'
+                    : '인증샷 변경',
+              ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xFF5B5FFF),
                 side: const BorderSide(color: Color(0xFF5B5FFF), width: 1.3),
@@ -1630,26 +1768,33 @@ class ExerciseSetData {
 }
 
 class FinishedWorkoutSummary {
+  final String? id;
   final String workoutType;
   final String duration;
 
   final int exerciseCount;
   final int totalSets;
+  final double totalVolumeKg;
 
   final double runningDistance;
   final String runningPace;
+  final String? photoUrl;
 
   File? imageFile;
 
   FinishedWorkoutSummary({
+    this.id,
     required this.workoutType,
     required this.duration,
 
     required this.exerciseCount,
     required this.totalSets,
+    required this.totalVolumeKg,
 
     required this.runningDistance,
     required this.runningPace,
+    this.photoUrl,
+    this.imageFile,
   });
 }
 

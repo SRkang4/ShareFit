@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../models/ranking_entry.dart';
+import '../services/ranking_service.dart';
+
 class RankingScreen extends StatefulWidget {
   const RankingScreen({super.key});
 
@@ -9,32 +12,8 @@ class RankingScreen extends StatefulWidget {
 
 class _RankingScreenState extends State<RankingScreen> {
   final Color pointColor = const Color(0xFF5B5FFF);
-
-  String selectedPeriod = '이번 주';
-
-  final List<RankingData> workoutDaysRanking = [
-    RankingData(name: '민수', value: '6일'),
-    RankingData(name: '현우', value: '5일'),
-    RankingData(name: '준호', value: '4일'),
-  ];
-
-  final List<RankingData> workoutTimeRanking = [
-    RankingData(name: '현우', value: '11시간 24분'),
-    RankingData(name: '민수', value: '9시간 42분'),
-    RankingData(name: '준호', value: '8시간 10분'),
-  ];
-
-  final List<RankingData> healthVolumeRanking = [
-    RankingData(name: '민수', value: '124,000kg'),
-    RankingData(name: '준호', value: '101,500kg'),
-    RankingData(name: '현우', value: '92,300kg'),
-  ];
-
-  final List<RankingData> runningDistanceRanking = [
-    RankingData(name: '현우', value: '42.2km'),
-    RankingData(name: '민수', value: '31.8km'),
-    RankingData(name: '준호', value: '24.5km'),
-  ];
+  final RankingService rankingService = RankingService();
+  RankingPeriod selectedPeriod = RankingPeriod.week;
 
   @override
   Widget build(BuildContext context) {
@@ -61,66 +40,72 @@ class _RankingScreenState extends State<RankingScreen> {
               ),
             ),
             const SizedBox(height: 26),
-
             _buildPeriodSelector(),
-
             const SizedBox(height: 28),
+            StreamBuilder<List<RankingEntry>>(
+              key: ValueKey(selectedPeriod),
+              stream: rankingService.watchRankings(selectedPeriod),
+              builder: (context, snapshot) {
+                final entries = snapshot.data ?? const <RankingEntry>[];
+                if (snapshot.connectionState == ConnectionState.waiting &&
+                    entries.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 80),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
 
-            _RankingSection(
-              title: '운동 일수',
-              rankings: workoutDaysRanking,
-              pointColor: pointColor,
-            ),
-
-            const SizedBox(height: 18),
-
-            _RankingSection(
-              title: '운동 시간',
-              rankings: workoutTimeRanking,
-              pointColor: pointColor,
-            ),
-
-            const SizedBox(height: 30),
-
-            const Text(
-              '헬스',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF111111),
-              ),
-            ),
-
-            const SizedBox(height: 14),
-
-            _RankingSection(
-              title: '총 볼륨',
-              rankings: healthVolumeRanking,
-              pointColor: pointColor,
-            ),
-
-            const SizedBox(height: 30),
-
-            const Text(
-              '러닝',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF111111),
-              ),
-            ),
-
-            const SizedBox(height: 14),
-
-            _RankingSection(
-              title: '총 거리',
-              rankings: runningDistanceRanking,
-              pointColor: pointColor,
+                final daysRanking = [...entries]..sort(_compareWorkoutDays);
+                final timeRanking = [...entries]..sort(_compareWorkoutTime);
+                return Column(
+                  children: [
+                    _RankingSection(
+                      title: '운동 일수',
+                      rankings: daysRanking,
+                      valueBuilder: (entry) => '${entry.workoutDays}일',
+                      pointColor: pointColor,
+                    ),
+                    const SizedBox(height: 18),
+                    _RankingSection(
+                      title: '운동 시간',
+                      rankings: timeRanking,
+                      valueBuilder: (entry) =>
+                          _formatDuration(entry.durationSeconds),
+                      pointColor: pointColor,
+                    ),
+                  ],
+                );
+              },
             ),
           ],
         ),
       ),
     );
+  }
+
+  int _compareWorkoutDays(RankingEntry first, RankingEntry second) {
+    final primary = second.workoutDays.compareTo(first.workoutDays);
+    if (primary != 0) return primary;
+    final secondary = second.durationSeconds.compareTo(first.durationSeconds);
+    if (secondary != 0) return secondary;
+    final name = first.name.compareTo(second.name);
+    return name != 0 ? name : first.uid.compareTo(second.uid);
+  }
+
+  int _compareWorkoutTime(RankingEntry first, RankingEntry second) {
+    final primary = second.durationSeconds.compareTo(first.durationSeconds);
+    if (primary != 0) return primary;
+    final secondary = second.workoutDays.compareTo(first.workoutDays);
+    if (secondary != 0) return secondary;
+    final name = first.name.compareTo(second.name);
+    return name != 0 ? name : first.uid.compareTo(second.uid);
+  }
+
+  String _formatDuration(int seconds) {
+    final hours = seconds ~/ 3600;
+    final minutes = (seconds % 3600) ~/ 60;
+    if (hours == 0) return '$minutes분';
+    return '$hours시간 $minutes분';
   }
 
   Widget _buildPeriodSelector() {
@@ -134,23 +119,15 @@ class _RankingScreenState extends State<RankingScreen> {
         children: [
           _PeriodButton(
             title: '이번 주',
-            selected: selectedPeriod == '이번 주',
+            selected: selectedPeriod == RankingPeriod.week,
             pointColor: pointColor,
-            onTap: () {
-              setState(() {
-                selectedPeriod = '이번 주';
-              });
-            },
+            onTap: () => setState(() => selectedPeriod = RankingPeriod.week),
           ),
           _PeriodButton(
             title: '이번 달',
-            selected: selectedPeriod == '이번 달',
+            selected: selectedPeriod == RankingPeriod.month,
             pointColor: pointColor,
-            onTap: () {
-              setState(() {
-                selectedPeriod = '이번 달';
-              });
-            },
+            onTap: () => setState(() => selectedPeriod = RankingPeriod.month),
           ),
         ],
       ),
@@ -159,17 +136,17 @@ class _RankingScreenState extends State<RankingScreen> {
 }
 
 class _PeriodButton extends StatelessWidget {
-  final String title;
-  final bool selected;
-  final Color pointColor;
-  final VoidCallback onTap;
-
   const _PeriodButton({
     required this.title,
     required this.selected,
     required this.pointColor,
     required this.onTap,
   });
+
+  final String title;
+  final bool selected;
+  final Color pointColor;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -198,15 +175,17 @@ class _PeriodButton extends StatelessWidget {
 }
 
 class _RankingSection extends StatelessWidget {
-  final String title;
-  final List<RankingData> rankings;
-  final Color pointColor;
-
   const _RankingSection({
     required this.title,
     required this.rankings,
+    required this.valueBuilder,
     required this.pointColor,
   });
+
+  final String title;
+  final List<RankingEntry> rankings;
+  final String Function(RankingEntry) valueBuilder;
+  final Color pointColor;
 
   @override
   Widget build(BuildContext context) {
@@ -228,14 +207,13 @@ class _RankingSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          ...List.generate(
-            rankings.length,
-                (index) => _RankingRow(
+          for (var index = 0; index < rankings.length; index++)
+            _RankingRow(
               rank: index + 1,
               data: rankings[index],
+              value: valueBuilder(rankings[index]),
               pointColor: pointColor,
             ),
-          ),
         ],
       ),
     );
@@ -243,26 +221,24 @@ class _RankingSection extends StatelessWidget {
 }
 
 class _RankingRow extends StatelessWidget {
-  final int rank;
-  final RankingData data;
-  final Color pointColor;
-
   const _RankingRow({
     required this.rank,
     required this.data,
+    required this.value,
     required this.pointColor,
   });
 
+  final int rank;
+  final RankingEntry data;
+  final String value;
+  final Color pointColor;
+
   @override
   Widget build(BuildContext context) {
-    final bool isFirst = rank == 1;
-
+    final isFirst = rank == 1;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 14,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
         color: isFirst ? Colors.white : Colors.transparent,
         borderRadius: BorderRadius.circular(18),
@@ -282,17 +258,46 @@ class _RankingRow extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              data.name,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF111111),
-              ),
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    data.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF111111),
+                    ),
+                  ),
+                ),
+                if (data.isCurrentUser) ...[
+                  const SizedBox(width: 7),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: pointColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: Text(
+                      '나',
+                      style: TextStyle(
+                        color: pointColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
+          const SizedBox(width: 8),
           Text(
-            data.value,
+            value,
             style: TextStyle(
               fontSize: isFirst ? 17 : 15,
               fontWeight: FontWeight.w900,
@@ -310,14 +315,4 @@ class _RankingRow extends StatelessWidget {
     if (rank == 3) return '🥉';
     return '$rank';
   }
-}
-
-class RankingData {
-  final String name;
-  final String value;
-
-  RankingData({
-    required this.name,
-    required this.value,
-  });
 }

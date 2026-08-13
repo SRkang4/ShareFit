@@ -183,6 +183,71 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.uid == request.auth.uid;
     }
 
+    match /publicActivity/{uid} {
+      allow get: if signedIn() &&
+          (request.auth.uid == uid ||
+           exists(friendPath(request.auth.uid, uid)));
+      allow list: if false;
+
+      allow create, update: if signedIn() && request.auth.uid == uid &&
+          request.resource.data.keys().hasOnly([
+            'uid', 'status', 'workoutType', 'startedAt', 'endedAt',
+            'durationSeconds', 'photoUrl', 'lastWorkoutAt',
+            'strengthSummary', 'runningSummary', 'updatedAt'
+          ]) &&
+          request.resource.data.uid == uid &&
+          request.resource.data.status in ['workingOut', 'completed', 'idle'] &&
+          request.resource.data.workoutType in ['strength', 'running'] &&
+          request.resource.data.startedAt is timestamp &&
+          request.resource.data.updatedAt is timestamp &&
+          (request.resource.data.get('endedAt', null) == null ||
+           request.resource.data.endedAt is timestamp) &&
+          (request.resource.data.get('durationSeconds', null) == null ||
+           request.resource.data.durationSeconds is int) &&
+          (request.resource.data.get('photoUrl', null) == null ||
+           request.resource.data.photoUrl is string) &&
+          (request.resource.data.get('lastWorkoutAt', null) == null ||
+           request.resource.data.lastWorkoutAt is timestamp);
+
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /publicWorkoutStats/{uid}/days/{dateKey} {
+      allow read: if signedIn() &&
+          (request.auth.uid == uid ||
+           exists(friendPath(request.auth.uid, uid)));
+
+      allow create: if signedIn() && request.auth.uid == uid &&
+          request.resource.data.keys().hasOnly([
+            'uid', 'dateKey', 'workoutCount', 'durationSeconds', 'updatedAt'
+          ]) &&
+          request.resource.data.uid == uid &&
+          request.resource.data.dateKey == dateKey &&
+          dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+          request.resource.data.workoutCount is int &&
+          request.resource.data.workoutCount == 1 &&
+          request.resource.data.durationSeconds is int &&
+          request.resource.data.durationSeconds >= 0 &&
+          request.resource.data.updatedAt is timestamp;
+
+      allow update: if signedIn() && request.auth.uid == uid &&
+          request.resource.data.keys().hasOnly([
+            'uid', 'dateKey', 'workoutCount', 'durationSeconds', 'updatedAt'
+          ]) &&
+          request.resource.data.uid == resource.data.uid &&
+          request.resource.data.uid == uid &&
+          request.resource.data.dateKey == resource.data.dateKey &&
+          request.resource.data.dateKey == dateKey &&
+          dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+          request.resource.data.workoutCount is int &&
+          request.resource.data.workoutCount == resource.data.workoutCount + 1 &&
+          request.resource.data.durationSeconds is int &&
+          request.resource.data.durationSeconds >= resource.data.durationSeconds &&
+          request.resource.data.updatedAt is timestamp;
+
+      allow delete: if false;
+    }
+
     match /friendRequests/{id} {
       allow get: if signedIn() &&
           request.auth.uid in [resource.data.fromUid, resource.data.toUid];

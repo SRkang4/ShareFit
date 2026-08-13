@@ -9,6 +9,7 @@ import '../models/workout_record.dart';
 import '../services/auth_service.dart';
 import '../services/workout_service.dart';
 import '../utils/experience_formatter.dart';
+import '../widgets/workout_history_card.dart';
 import 'settings_screen.dart';
 
 class MyPageScreen extends StatefulWidget {
@@ -37,7 +38,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
+    final now = DateTime.now().toUtc().add(const Duration(hours: 9));
     displayedWorkoutMonth = DateTime(now.year, now.month);
     selectedWorkoutDate = DateTime(now.year, now.month, now.day);
     _workoutsStream = _workoutService.watchCompletedWorkouts();
@@ -719,23 +720,15 @@ class _MyPageScreenState extends State<MyPageScreen> {
     final leadingDays = monthStart.weekday % 7;
     final itemCount = ((leadingDays + daysInMonth + 6) ~/ 7) * 7;
     final monthWorkouts = workouts.where((workout) {
-      final endedAt = workout.endedAt.toLocal();
+      final endedAt = _toSeoulTime(workout.endedAt);
       return endedAt.year == monthStart.year &&
           endedAt.month == monthStart.month;
     }).toList();
     final workoutDays = monthWorkouts
-        .map((workout) => workout.endedAt.toLocal().day)
+        .map((workout) => _toSeoulTime(workout.endedAt).day)
         .toSet();
     final selectedDate = selectedWorkoutDate;
-    final selectedWorkouts = selectedDate == null
-        ? const <WorkoutRecord>[]
-        : monthWorkouts.where((workout) {
-            final endedAt = workout.endedAt.toLocal();
-            return endedAt.year == selectedDate.year &&
-                endedAt.month == selectedDate.month &&
-                endedAt.day == selectedDate.day;
-          }).toList();
-    final now = DateTime.now();
+    final now = DateTime.now().toUtc().add(const Duration(hours: 9));
     final isCurrentMonth =
         now.year == monthStart.year && now.month == monthStart.month;
 
@@ -900,53 +893,83 @@ class _MyPageScreenState extends State<MyPageScreen> {
 
           const SizedBox(height: 18),
 
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: selectedWorkouts.isEmpty
-                ? const Text(
+          _buildSelectedDateWorkouts(selectedDate),
+        ],
+      ),
+    );
+  }
+
+  DateTime _toSeoulTime(DateTime dateTime) {
+    return dateTime.toUtc().add(const Duration(hours: 9));
+  }
+
+  Widget _buildSelectedDateWorkouts(DateTime? selectedDate) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: selectedDate == null
+          ? const Text(
+              '날짜를 선택해주세요.',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF777777),
+              ),
+            )
+          : StreamBuilder<List<WorkoutRecord>>(
+              key: ValueKey(
+                '${selectedDate.year}-${selectedDate.month}-${selectedDate.day}',
+              ),
+              stream: _workoutService.watchWorkoutsForDate(selectedDate),
+              builder: (context, snapshot) {
+                final records = snapshot.data ?? const <WorkoutRecord>[];
+                if (snapshot.connectionState == ConnectionState.waiting &&
+                    !snapshot.hasData) {
+                  return const Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    ),
+                  );
+                }
+                if (records.isEmpty) {
+                  return const Text(
                     '선택한 날짜의 운동 기록이 없어요.',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF777777),
                     ),
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: selectedWorkouts.map((workout) {
-                      final endedAt = workout.endedAt.toLocal();
-                      final type = workout.type == 'strength' ? '헬스' : '러닝';
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Text(
-                          '${endedAt.month}월 ${endedAt.day}일 · $type ${_formatCalendarDuration(workout.durationSeconds)}',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF111111),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
+                  );
+                }
 
-  String _formatCalendarDuration(int durationSeconds) {
-    final hours = durationSeconds ~/ 3600;
-    final minutes = (durationSeconds % 3600) ~/ 60;
-    if (hours > 0) {
-      return '$hours시간 $minutes분';
-    }
-    return '$minutes분';
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${selectedDate.year}년 ${selectedDate.month}월 ${selectedDate.day}일',
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF111111),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    for (final workout in records)
+                      WorkoutHistoryCard(
+                        key: ValueKey(workout.id),
+                        workout: workout,
+                      ),
+                  ],
+                );
+              },
+            ),
+    );
   }
 
   Widget _buildProCard() {

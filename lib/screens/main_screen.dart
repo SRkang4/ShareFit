@@ -18,16 +18,15 @@ class _MainScreenState extends State<MainScreen> {
   int selectedIndex = 0;
   final FriendService _friendService = FriendService();
 
-  final List<Widget> screens = const [
-    HomeScreen(),
-    WorkoutScreen(),
-    FriendsScreen(),
-    RankingScreen(),
-    MyPageScreen(),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final screens = <Widget>[
+      const HomeScreen(),
+      WorkoutScreen(isActive: selectedIndex == 1),
+      const FriendsScreen(),
+      const RankingScreen(),
+      const MyPageScreen(),
+    ];
     return Scaffold(
       body: IndexedStack(index: selectedIndex, children: screens),
 
