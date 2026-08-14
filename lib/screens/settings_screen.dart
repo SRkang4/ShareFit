@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
 
 import '../services/auth_service.dart';
+import '../theme/app_theme_color.dart';
+import '../theme/app_theme.dart';
+import '../theme/theme_controller.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -13,8 +16,9 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  static const pointColor = Color(0xFF5B5FFF);
   static const dangerColor = Color(0xFFFF5A76);
+
+  Color get pointColor => Theme.of(context).colorScheme.primary;
 
   final AuthService _authService = AuthService();
 
@@ -59,19 +63,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF111111),
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       message,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
-                        color: Color(0xFF666666),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 22),
@@ -85,7 +89,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ? null
                                   : () => Navigator.pop(dialogContext),
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xFF666666),
+                                foregroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface,
                                 side: const BorderSide(
                                   color: Color(0xFFE0E0E0),
                                 ),
@@ -279,18 +285,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: const Icon(Icons.arrow_back_ios_new_rounded),
                 ),
                 const SizedBox(width: 6),
-                const Text(
+                Text(
                   '설정',
                   style: TextStyle(
                     fontSize: 30,
                     fontWeight: FontWeight.w900,
-                    color: Color(0xFF111111),
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
               ],
             ),
 
             const SizedBox(height: 24),
+
+            const _ThemeCard(),
+
+            const SizedBox(height: 18),
 
             _SectionCard(
               title: '알림 설정',
@@ -357,12 +367,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             _SectionCard(
               title: '앱 정보',
-              children: const [
-                _MenuRow(
-                  title: '앱 버전',
-                  trailingText: '1.0.0',
-                ),
-              ],
+              children: const [_MenuRow(title: '앱 버전', trailingText: '1.0.0')],
             ),
 
             const SizedBox(height: 18),
@@ -395,17 +400,14 @@ class _SectionCard extends StatelessWidget {
   final String title;
   final List<Widget> children;
 
-  const _SectionCard({
-    required this.title,
-    required this.children,
-  });
+  const _SectionCard({required this.title, required this.children});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F7),
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(26),
       ),
       child: Column(
@@ -413,10 +415,10 @@ class _SectionCard extends StatelessWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 19,
               fontWeight: FontWeight.w900,
-              color: Color(0xFF111111),
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 10),
@@ -448,18 +450,14 @@ class _SwitchRow extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF111111),
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
           ),
-          Switch(
-            value: value,
-            activeColor: const Color(0xFF5B5FFF),
-            onChanged: onChanged,
-          ),
+          Switch(value: value, onChanged: onChanged),
         ],
       ),
     );
@@ -481,7 +479,9 @@ class _MenuRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isDanger ? const Color(0xFFFF5A76) : const Color(0xFF111111);
+    final color = isDanger
+        ? const Color(0xFFFF5A76)
+        : Theme.of(context).colorScheme.onSurface;
 
     return InkWell(
       onTap: onTap,
@@ -506,15 +506,144 @@ class _MenuRow extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF777777),
                 ),
               )
             else
               Icon(
                 Icons.chevron_right_rounded,
-                color: isDanger ? color : const Color(0xFF999999),
+                color: isDanger
+                    ? color
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ThemeCard extends StatelessWidget {
+  const _ThemeCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainer,
+        borderRadius: BorderRadius.circular(26),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '테마',
+            style: TextStyle(
+              color: context.foregroundFor(colors.surfaceContainer),
+              fontSize: 19,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _ThemePill(
+                  label: '라이트',
+                  selected: ThemeController.instance.mode == ThemeMode.light,
+                  onTap: () =>
+                      ThemeController.instance.setMode(ThemeMode.light),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _ThemePill(
+                  label: '다크',
+                  selected: ThemeController.instance.mode == ThemeMode.dark,
+                  onTap: () => ThemeController.instance.setMode(ThemeMode.dark),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _ThemePill(
+                  label: '시스템',
+                  selected: ThemeController.instance.mode == ThemeMode.system,
+                  onTap: () =>
+                      ThemeController.instance.setMode(ThemeMode.system),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              for (
+                var index = 0;
+                index < AppAccentColor.values.length;
+                index++
+              ) ...[
+                if (index > 0) const SizedBox(width: 8),
+                Expanded(
+                  child: _ThemePill(
+                    label: AppAccentColor.values[index].label,
+                    selected:
+                        ThemeController.instance.accent ==
+                        AppAccentColor.values[index],
+                    selectedColor: AppAccentColor.values[index].color,
+                    onTap: () => ThemeController.instance.setAccent(
+                      AppAccentColor.values[index],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThemePill extends StatelessWidget {
+  const _ThemePill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.selectedColor,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final Color? selectedColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final background = selected
+        ? (selectedColor ?? colors.primary)
+        : colors.surfaceContainerHigh;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        height: 36,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: selected ? background : colors.outline),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          style: TextStyle(
+            color: selected ? Colors.white : context.foregroundFor(background),
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+          ),
         ),
       ),
     );

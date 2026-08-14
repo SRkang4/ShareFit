@@ -10,18 +10,17 @@ class LoginScreen extends StatelessWidget {
   void _enterApp(BuildContext context) {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (context) => const MainScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => const MainScreen()),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    const pointColor = Color(0xFF5B5FFF);
+    final colors = Theme.of(context).colorScheme;
+    final pointColor = colors.primary;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: colors.surface,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 36, 24, 28),
@@ -30,38 +29,38 @@ class LoginScreen extends StatelessWidget {
             children: [
               const Spacer(),
 
-              const Text(
+              Text(
                 'ShareFit',
                 style: TextStyle(
                   fontSize: 42,
                   fontWeight: FontWeight.w900,
-                  color: Color(0xFF111111),
+                  color: colors.onSurface,
                   letterSpacing: -1.2,
                 ),
               ),
 
               const SizedBox(height: 14),
 
-              const Text(
+              Text(
                 '친구와 운동을 공유하고\n함께 꾸준해지는 공간',
                 style: TextStyle(
                   fontSize: 20,
                   height: 1.35,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF111111),
+                  color: colors.onSurface,
                   letterSpacing: -0.4,
                 ),
               ),
 
               const SizedBox(height: 12),
 
-              const Text(
+              Text(
                 '운동 중인 친구를 확인하고, 완료 기록으로 서로 자극받아보세요.',
                 style: TextStyle(
                   fontSize: 15,
                   height: 1.45,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF666666),
+                  color: colors.onSurfaceVariant,
                   letterSpacing: -0.2,
                 ),
               ),
@@ -114,10 +113,8 @@ class LoginScreen extends StatelessWidget {
                     );
                   },
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF111111),
-                    side: const BorderSide(
-                      color: Color(0xFFE0E0E0),
-                    ),
+                    foregroundColor: colors.onSurface,
+                    side: BorderSide(color: colors.outline),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
                     ),

@@ -6,6 +6,7 @@ import '../models/friend.dart';
 import '../models/public_activity.dart';
 import '../services/friend_service.dart';
 import '../services/public_activity_service.dart';
+import '../theme/app_theme.dart';
 import '../widgets/section_title.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -112,18 +113,18 @@ class _HomeScreenState extends State<HomeScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
           children: [
-            const Text(
+            Text(
               'ShareFit',
-              style: TextStyle(
-                fontSize: 34,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF111111),
-              ),
+              style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               '친구들의 운동 상태를 확인해보세요.',
-              style: TextStyle(fontSize: 15, color: Color(0xFF666666)),
+              style: TextStyle(
+                fontSize: 15,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 36),
             const SectionTitle(title: '현재 운동 중'),
@@ -213,7 +214,7 @@ class _WorkingOutCard extends StatelessWidget {
               ],
             ),
           ),
-          _pill('운동 중', const Color(0xFF5B5FFF)),
+          _pill('운동 중', Theme.of(context).colorScheme.primary),
         ],
       ),
     );
@@ -264,7 +265,6 @@ class _CompletedWorkoutCard extends StatelessWidget {
                         '$title · ${_duration(activity.durationSeconds ?? 0)}',
                         style: const TextStyle(
                           fontSize: 14,
-                          color: Color(0xFF111111),
                           fontWeight: FontWeight.w800,
                         ),
                       ),
@@ -285,7 +285,7 @@ class _CompletedWorkoutCard extends StatelessWidget {
                       expanded
                           ? Icons.keyboard_arrow_up_rounded
                           : Icons.keyboard_arrow_down_rounded,
-                      color: const Color(0xFF5B5FFF),
+                      color: Theme.of(context).colorScheme.primary,
                       size: 28,
                     ),
                   ),
@@ -370,7 +370,7 @@ class _BaseCard extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 14),
     padding: const EdgeInsets.all(18),
     decoration: BoxDecoration(
-      color: const Color(0xFFF4F5F7),
+      color: Theme.of(context).colorScheme.surfaceContainer,
       borderRadius: BorderRadius.circular(24),
     ),
     child: child,
@@ -402,31 +402,25 @@ class _EmptyHomeCard extends StatelessWidget {
     width: double.infinity,
     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
     decoration: BoxDecoration(
-      color: const Color(0xFFF4F5F7),
+      color: Theme.of(context).colorScheme.surfaceContainer,
       borderRadius: BorderRadius.circular(24),
     ),
     child: Text(
       message,
       textAlign: TextAlign.center,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 14,
-        color: Color(0xFF777777),
+        color: context.secondaryForegroundFor(
+          Theme.of(context).colorScheme.surfaceContainer,
+        ),
         fontWeight: FontWeight.w700,
       ),
     ),
   );
 }
 
-const _nameStyle = TextStyle(
-  fontSize: 17,
-  fontWeight: FontWeight.w900,
-  color: Color(0xFF111111),
-);
-const _subStyle = TextStyle(
-  fontSize: 14,
-  color: Color(0xFF666666),
-  fontWeight: FontWeight.w600,
-);
+const _nameStyle = TextStyle(fontSize: 17, fontWeight: FontWeight.w900);
+const _subStyle = TextStyle(fontSize: 14, fontWeight: FontWeight.w600);
 Widget _pill(String text, Color color) => Container(
   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
   decoration: BoxDecoration(
@@ -447,13 +441,7 @@ Widget _detail(String label, String value) => Padding(
   child: Row(
     children: [
       Expanded(child: Text(label, style: _subStyle)),
-      Text(
-        value,
-        style: const TextStyle(
-          fontWeight: FontWeight.w800,
-          color: Color(0xFF111111),
-        ),
-      ),
+      Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
     ],
   ),
 );

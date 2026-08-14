@@ -10,6 +10,7 @@ import '../services/auth_service.dart';
 import '../services/workout_service.dart';
 import '../utils/experience_formatter.dart';
 import '../widgets/workout_history_card.dart';
+import '../theme/app_theme.dart';
 import 'settings_screen.dart';
 
 class MyPageScreen extends StatefulWidget {
@@ -20,7 +21,7 @@ class MyPageScreen extends StatefulWidget {
 }
 
 class _MyPageScreenState extends State<MyPageScreen> {
-  final Color pointColor = const Color(0xFF5B5FFF);
+  Color get pointColor => Theme.of(context).colorScheme.primary;
   final AuthService _authService = AuthService();
   final WorkoutService _workoutService = WorkoutService();
 
@@ -103,13 +104,13 @@ class _MyPageScreenState extends State<MyPageScreen> {
               children: [
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         '마이',
                         style: TextStyle(
                           fontSize: 32,
                           fontWeight: FontWeight.w900,
-                          color: Color(0xFF111111),
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                     ),
@@ -123,11 +124,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
                           ),
                         );
                       },
-                      icon: const Icon(
-                        Icons.settings_rounded,
-                        size: 28,
-                        color: Color(0xFF111111),
-                      ),
+                      icon: const Icon(Icons.settings_rounded, size: 28),
                     ),
                   ],
                 ),
@@ -178,12 +175,12 @@ class _MyPageScreenState extends State<MyPageScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
+                      Text(
                         '프로필 수정',
                         style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.w900,
-                          color: Color(0xFF111111),
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
 
@@ -211,10 +208,10 @@ class _MyPageScreenState extends State<MyPageScreen> {
 
                       TextButton(
                         onPressed: pickProfileImage,
-                        child: const Text(
+                        child: Text(
                           '프로필 사진 변경',
                           style: TextStyle(
-                            color: Color(0xFF5B5FFF),
+                            color: Theme.of(context).colorScheme.primary,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -228,7 +225,9 @@ class _MyPageScreenState extends State<MyPageScreen> {
                         decoration: InputDecoration(
                           hintText: '이름',
                           filled: true,
-                          fillColor: const Color(0xFFF4F5F7),
+                          fillColor: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainer,
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 18,
                             vertical: 16,
@@ -275,7 +274,9 @@ class _MyPageScreenState extends State<MyPageScreen> {
                             vertical: 16,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF4F5F7),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainer,
                             borderRadius: BorderRadius.circular(18),
                           ),
                           child: Row(
@@ -288,14 +289,16 @@ class _MyPageScreenState extends State<MyPageScreen> {
                                   style: TextStyle(
                                     color: selectedStartDate == null
                                         ? const Color(0xFFB0B0B0)
-                                        : const Color(0xFF111111),
+                                        : Theme.of(
+                                            context,
+                                          ).colorScheme.onSurface,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
-                              const Icon(
+                              Icon(
                                 Icons.calendar_month_rounded,
-                                color: Color(0xFF5B5FFF),
+                                color: Theme.of(context).colorScheme.primary,
                               ),
                             ],
                           ),
@@ -450,7 +453,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
               Expanded(
                 child: Text(
                   message,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'Pretendard',
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
@@ -470,7 +473,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F7),
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(28),
       ),
       child: Row(
@@ -498,18 +501,14 @@ class _MyPageScreenState extends State<MyPageScreen> {
                   isLoadingProfile
                       ? '불러오는 중'
                       : (displayName.isEmpty ? '이름 미설정' : displayName),
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF111111),
-                  ),
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   isLoadingProfile ? '운동 경력 불러오는 중' : _experienceText(),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
-                    color: Color(0xFF666666),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -545,7 +544,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F7),
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(28),
       ),
       child: Column(
@@ -556,11 +555,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
               const Expanded(
                 child: Text(
                   '운동 요약',
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF111111),
-                  ),
+                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
                 ),
               ),
 
@@ -735,26 +730,22 @@ class _MyPageScreenState extends State<MyPageScreen> {
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F7),
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(28),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '운동 캘린더',
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF111111),
-            ),
+            style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             '운동한 날을 한눈에 확인해요.',
             style: TextStyle(
               fontSize: 13,
-              color: Color(0xFF666666),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -767,7 +758,6 @@ class _MyPageScreenState extends State<MyPageScreen> {
                 style: const TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w900,
-                  color: Color(0xFF111111),
                 ),
               ),
               const Spacer(),
@@ -781,9 +771,9 @@ class _MyPageScreenState extends State<MyPageScreen> {
                     selectedWorkoutDate = null;
                   });
                 },
-                child: const Icon(
+                child: Icon(
                   Icons.chevron_left_rounded,
-                  color: Color(0xFF999999),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(width: 8),
@@ -797,9 +787,9 @@ class _MyPageScreenState extends State<MyPageScreen> {
                     selectedWorkoutDate = null;
                   });
                 },
-                child: const Icon(
+                child: Icon(
                   Icons.chevron_right_rounded,
-                  color: Color(0xFF999999),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -853,7 +843,9 @@ class _MyPageScreenState extends State<MyPageScreen> {
                 },
                 child: Container(
                   decoration: BoxDecoration(
-                    color: isToday ? const Color(0xFF5B5FFF) : Colors.white,
+                    color: isToday
+                        ? pointColor
+                        : Theme.of(context).colorScheme.surfaceContainerHigh,
                     shape: BoxShape.circle,
                   ),
                   child: Stack(
@@ -866,7 +858,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
                           fontWeight: FontWeight.w800,
                           color: isToday
                               ? Colors.white
-                              : const Color(0xFF111111),
+                              : Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
 
@@ -877,9 +869,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
                             width: 5,
                             height: 5,
                             decoration: BoxDecoration(
-                              color: isToday
-                                  ? Colors.white
-                                  : const Color(0xFF5B5FFF),
+                              color: isToday ? Colors.white : pointColor,
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -908,16 +898,18 @@ class _MyPageScreenState extends State<MyPageScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(20),
       ),
       child: selectedDate == null
-          ? const Text(
+          ? Text(
               '날짜를 선택해주세요.',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF777777),
+                color: context.secondaryForegroundFor(
+                  Theme.of(context).colorScheme.surfaceContainerHigh,
+                ),
               ),
             )
           : StreamBuilder<List<WorkoutRecord>>(
@@ -938,12 +930,14 @@ class _MyPageScreenState extends State<MyPageScreen> {
                   );
                 }
                 if (records.isEmpty) {
-                  return const Text(
+                  return Text(
                     '선택한 날짜의 운동 기록이 없어요.',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF777777),
+                      color: context.secondaryForegroundFor(
+                        Theme.of(context).colorScheme.surfaceContainerHigh,
+                      ),
                     ),
                   );
                 }
@@ -956,7 +950,6 @@ class _MyPageScreenState extends State<MyPageScreen> {
                       style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF111111),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -1052,10 +1045,11 @@ class _SummaryBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final background = context.colors.surfaceContainerHigh;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: background,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -1063,19 +1057,19 @@ class _SummaryBox extends StatelessWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
-              color: Color(0xFF666666),
+              color: context.secondaryForegroundFor(background),
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
-              color: Color(0xFF111111),
               fontWeight: FontWeight.w900,
+              color: context.foregroundFor(background),
             ),
           ),
         ],
@@ -1096,10 +1090,10 @@ class _WeekdayText extends StatelessWidget {
       child: Text(
         text,
         textAlign: TextAlign.center,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w800,
-          color: Color(0xFF777777),
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
       ),
     );
@@ -1121,6 +1115,9 @@ class _SummaryPeriodButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final background = selected
+        ? pointColor
+        : Theme.of(context).colorScheme.surfaceContainerHigh;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1128,13 +1125,15 @@ class _SummaryPeriodButton extends StatelessWidget {
         height: 34,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? pointColor : Colors.white,
+          color: background,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text(
           title,
           style: TextStyle(
-            color: selected ? Colors.white : const Color(0xFF666666),
+            color: selected
+                ? Colors.white
+                : context.secondaryForegroundFor(background),
             fontSize: 13,
             fontWeight: FontWeight.w900,
           ),

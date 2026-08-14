@@ -16,7 +16,7 @@ class FriendsScreen extends StatefulWidget {
 }
 
 class _FriendsScreenState extends State<FriendsScreen> {
-  final Color pointColor = const Color(0xFF5B5FFF);
+  Color get pointColor => Theme.of(context).colorScheme.primary;
   final TextEditingController friendCodeController = TextEditingController();
   final AuthService _authService = AuthService();
   final FriendService _friendService = FriendService();
@@ -105,18 +105,17 @@ class _FriendsScreenState extends State<FriendsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
+                  Text(
                     '친구 추가',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF111111),
-                    ),
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
+                  Text(
                     '친구 코드를 입력해 요청을 보내세요.',
-                    style: TextStyle(fontSize: 14, color: Color(0xFF666666)),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 22),
                   TextField(
@@ -126,7 +125,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                     decoration: InputDecoration(
                       hintText: '예: A1234567',
                       filled: true,
-                      fillColor: const Color(0xFFF4F5F7),
+                      fillColor: Theme.of(context).colorScheme.surfaceContainer,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 18,
                         vertical: 16,
@@ -152,7 +151,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
                               Navigator.pop(dialogContext);
                             },
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF666666),
+                              foregroundColor: Theme.of(
+                                context,
+                              ).colorScheme.onSurface,
                               side: const BorderSide(color: Color(0xFFE0E0E0)),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(18),
@@ -268,7 +269,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF111111),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -277,7 +277,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 15,
-                        color: Color(0xFF666666),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -292,7 +291,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
                                   ? null
                                   : () => Navigator.pop(dialogContext),
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xFF666666),
+                                foregroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface,
                                 side: const BorderSide(
                                   color: Color(0xFFE0E0E0),
                                 ),
@@ -453,11 +454,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                 const Expanded(
                   child: Text(
                     '친구',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF111111),
-                    ),
+                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900),
                   ),
                 ),
                 GestureDetector(
@@ -501,7 +498,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
     return Container(
       padding: const EdgeInsets.all(5),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F7),
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -545,11 +542,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
           isPro
               ? '${friends.length}명 친구 사용 중'
               : '${friends.length} / $maxFreeFriends 친구 사용 중',
-          style: const TextStyle(
-            fontSize: 14,
-            color: Color(0xFF666666),
-            fontWeight: FontWeight.w700,
-          ),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 18),
 
@@ -660,18 +653,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F7),
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(24),
       ),
       child: Row(
         children: [
           const Text(
             '내 친구 코드',
-            style: TextStyle(
-              fontSize: 15,
-              color: Color(0xFF666666),
-              fontWeight: FontWeight.w700,
-            ),
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
           ),
           const Spacer(),
           FutureBuilder<Map<String, dynamic>?>(
@@ -682,7 +671,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
                 friendCode ?? (snapshot.hasError ? '불러오기 실패' : '불러오는 중'),
                 style: const TextStyle(
                   fontSize: 18,
-                  color: Color(0xFF111111),
                   fontWeight: FontWeight.w900,
                   letterSpacing: 1,
                 ),
@@ -699,11 +687,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
   Widget _buildRequestSectionTitle(String title, int count) {
     return Text(
       '$title ($count)',
-      style: const TextStyle(
-        fontSize: 20,
-        fontWeight: FontWeight.w900,
-        color: Color(0xFF111111),
-      ),
+      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
     );
   }
 
@@ -771,17 +755,13 @@ class _EmptyFriendsCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F7),
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(24),
       ),
       child: Text(
         message,
         textAlign: TextAlign.center,
-        style: const TextStyle(
-          fontSize: 14,
-          color: Color(0xFF777777),
-          fontWeight: FontWeight.w700,
-        ),
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -798,7 +778,7 @@ class _SearchResultCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F7),
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
@@ -806,20 +786,12 @@ class _SearchResultCard extends StatelessWidget {
         children: [
           Text(
             result.profile.name,
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF111111),
-            ),
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 5),
           Text(
             result.profile.friendCode,
-            style: const TextStyle(
-              fontSize: 14,
-              color: Color(0xFF666666),
-              fontWeight: FontWeight.w700,
-            ),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
           ),
           if (result.reason != null) ...[
             const SizedBox(height: 8),
@@ -872,7 +844,9 @@ class _FriendTabButton extends StatelessWidget {
                 Text(
                   title,
                   style: TextStyle(
-                    color: selected ? Colors.white : const Color(0xFF666666),
+                    color: selected
+                        ? Colors.white
+                        : Theme.of(context).colorScheme.onSurface,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
                   ),
@@ -968,10 +942,10 @@ class _ReceivedRequestCard extends StatelessWidget {
         children: [
           TextButton(
             onPressed: isProcessing ? null : onReject,
-            child: const Text(
+            child: Text(
               '거절',
               style: TextStyle(
-                color: Color(0xFF999999),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -984,10 +958,10 @@ class _ReceivedRequestCard extends StatelessWidget {
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text(
+                : Text(
                     '수락',
                     style: TextStyle(
-                      color: Color(0xFF5B5FFF),
+                      color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -1051,14 +1025,14 @@ class _BaseUserCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F7),
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(24),
       ),
       child: Row(
         children: [
           CircleAvatar(
             radius: 26,
-            backgroundColor: const Color(0xFF5B5FFF),
+            backgroundColor: Theme.of(context).colorScheme.primary,
             child: Text(
               name.substring(0, 1),
               style: const TextStyle(
@@ -1078,7 +1052,6 @@ class _BaseUserCard extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w900,
-                    color: Color(0xFF111111),
                   ),
                 ),
                 const SizedBox(height: 5),
@@ -1086,7 +1059,6 @@ class _BaseUserCard extends StatelessWidget {
                   career,
                   style: const TextStyle(
                     fontSize: 14,
-                    color: Color(0xFF666666),
                     fontWeight: FontWeight.w600,
                   ),
                 ),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 class FriendStatusCard extends StatelessWidget {
   final String name;
   final String status;
@@ -20,7 +22,7 @@ class FriendStatusCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
 
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F7FA),
+        color: Theme.of(context).colorScheme.surfaceContainer,
 
         borderRadius: BorderRadius.circular(24),
       ),
@@ -30,13 +32,11 @@ class FriendStatusCard extends StatelessWidget {
           CircleAvatar(
             radius: 26,
             backgroundColor: isWorkingOut
-                ? const Color(0xFF5B5FFF)
+                ? Theme.of(context).colorScheme.primary
                 : const Color(0xFFE4E7EC),
 
             child: Icon(
-              isWorkingOut
-                  ? Icons.local_fire_department
-                  : Icons.check,
+              isWorkingOut ? Icons.local_fire_department : Icons.check,
 
               color: Colors.white,
             ),
@@ -51,10 +51,12 @@ class FriendStatusCard extends StatelessWidget {
                 Text(
                   name,
 
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF111111),
+                    color: context.foregroundFor(
+                      Theme.of(context).colorScheme.surfaceContainer,
+                    ),
                   ),
                 ),
 
@@ -63,9 +65,11 @@ class FriendStatusCard extends StatelessWidget {
                 Text(
                   status,
 
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
-                    color: Color(0xFF666666),
+                    color: context.secondaryForegroundFor(
+                      Theme.of(context).colorScheme.surfaceContainer,
+                    ),
                   ),
                 ),
               ],
@@ -74,13 +78,10 @@ class FriendStatusCard extends StatelessWidget {
 
           if (isWorkingOut)
             Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 7,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
 
               decoration: BoxDecoration(
-                color: const Color(0xFF5B5FFF),
+                color: Theme.of(context).colorScheme.primary,
                 borderRadius: BorderRadius.circular(100),
               ),
 

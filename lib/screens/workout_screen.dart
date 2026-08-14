@@ -9,6 +9,7 @@ import 'package:top_snackbar_flutter/top_snack_bar.dart';
 import '../models/workout_record.dart';
 import '../services/location_tracking_service.dart';
 import '../services/public_activity_service.dart';
+import '../services/workout_progress_notification_service.dart';
 import '../services/workout_service.dart';
 import '../widgets/workout_history_card.dart';
 
@@ -23,8 +24,8 @@ class WorkoutScreen extends StatefulWidget {
 
 class _WorkoutScreenState extends State<WorkoutScreen>
     with WidgetsBindingObserver {
-  final Color pointColor = const Color(0xFF5B5FFF);
-  final Color subPointColor = const Color(0xFF7C82FF);
+  Color get pointColor => Theme.of(context).colorScheme.primary;
+  Color get subPointColor => Theme.of(context).colorScheme.primaryContainer;
 
   String selectedWorkoutType = '헬스';
   bool isWorkoutStarted = false;
@@ -41,6 +42,8 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       LocationTrackingService();
   final WorkoutService workoutService = WorkoutService();
   final PublicActivityService publicActivityService = PublicActivityService();
+  final WorkoutProgressNotificationService progressNotificationService =
+      WorkoutProgressNotificationService();
   late final Stream<List<WorkoutRecord>> todayWorkoutsStream;
   String? justCompletedWorkoutId;
   double runningDistanceMeters = 0.0;
@@ -88,6 +91,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     timer?.cancel();
     weakGpsTimer?.cancel();
     unawaited(locationTrackingService.dispose());
+    unawaited(progressNotificationService.stop());
     runningGoalController.dispose();
     for (final exercise in exercises) {
       exercise.dispose();
@@ -106,6 +110,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       setState(() {
         seconds = currentSeconds;
       });
+      unawaited(_updateProgressNotification(force: true));
     }
   }
 
@@ -178,6 +183,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     });
 
     _startActiveTimer();
+    unawaited(_startProgressNotification());
   }
 
   void increaseRunningGoal() {
@@ -216,6 +222,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
           isPaused = true;
         }
       });
+      unawaited(_updateProgressNotification(force: true));
       return;
     }
 
@@ -230,6 +237,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         isPaused = true;
       });
       await _stopRunningLocationTracking();
+      await _updateProgressNotification(force: true);
       isChangingPauseState = false;
       return;
     }
@@ -253,6 +261,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       isPaused = false;
       activeSegmentStartedAt = resumedAt;
     });
+    await _updateProgressNotification(force: true);
     isChangingPauseState = false;
   }
 
@@ -307,6 +316,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         return;
       }
     }
+    await _updateProgressNotification(force: true);
 
     late final String workoutId;
     try {
@@ -348,8 +358,16 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       if (!isPaused) {
         _startActiveTimer();
       }
+      await _updateProgressNotification(force: true);
       _showError('운동 기록을 저장하지 못했습니다. 다시 시도해주세요.');
       return;
+    }
+
+    try {
+      await progressNotificationService.stop();
+    } catch (_) {
+      // Notification cleanup must not turn a successfully saved workout into
+      // a failed workout session.
     }
 
     setState(() {
@@ -492,6 +510,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
           seconds = currentSeconds;
         });
       }
+      unawaited(_updateProgressNotification());
     });
   }
 
@@ -517,10 +536,49 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   }
 
   String _formatPace(double paceSecondsPerKm) {
-    final totalSeconds = paceSecondsPerKm.round();
-    final min = totalSeconds ~/ 60;
-    final sec = totalSeconds % 60;
-    return '$min\'${sec.toString().padLeft(2, '0')}"';
+    return WorkoutProgressNotificationService.formatPace(paceSecondsPerKm);
+  }
+
+  Future<void> _startProgressNotification() async {
+    try {
+      if (selectedWorkoutType == '러닝') {
+        await progressNotificationService.startRunning(
+          durationSeconds: seconds,
+          distanceMeters: runningDistanceMeters,
+        );
+      } else {
+        await progressNotificationService.startStrength(
+          durationSeconds: seconds,
+          bodyParts: selectedBodyParts,
+        );
+      }
+    } catch (_) {
+      // Notification permission or platform failures do not block workouts.
+    }
+  }
+
+  Future<void> _updateProgressNotification({bool force = false}) async {
+    if (!isWorkoutStarted) return;
+    try {
+      if (selectedWorkoutType == '러닝') {
+        await progressNotificationService.updateRunning(
+          durationSeconds: seconds,
+          distanceMeters: runningDistanceMeters,
+          isPaused: isPaused,
+          force: force,
+        );
+      } else {
+        await progressNotificationService.updateStrength(
+          durationSeconds: seconds,
+          bodyParts: selectedBodyParts,
+          isPaused: isPaused,
+          force: force,
+        );
+      }
+    } catch (_) {
+      // The exercise session remains the source of truth when notification
+      // delivery is unavailable or permission has been denied.
+    }
   }
 
   Future<void> _startRunningLocationTracking() async {
@@ -602,6 +660,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       lastRunningPosition = position;
       validRunningLocationCount++;
     });
+    unawaited(_updateProgressNotification());
   }
 
   void _handleRunningLocationError(Object error) {
@@ -614,8 +673,13 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         isPaused = true;
       });
     }
-    unawaited(_stopRunningLocationTracking());
+    unawaited(_pauseAfterLocationFailure());
     _showLocationError(error);
+  }
+
+  Future<void> _pauseAfterLocationFailure() async {
+    await _stopRunningLocationTracking();
+    await _updateProgressNotification(force: true);
   }
 
   void _scheduleWeakGpsWarning() {
@@ -804,11 +868,8 @@ class _WorkoutScreenState extends State<WorkoutScreen>
                               ? null
                               : togglePause,
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF5B5FFF),
-                            side: const BorderSide(
-                              color: Color(0xFF5B5FFF),
-                              width: 1.4,
-                            ),
+                            foregroundColor: pointColor,
+                            side: BorderSide(color: pointColor, width: 1.4),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(20),
                             ),
@@ -873,18 +934,14 @@ class _WorkoutScreenState extends State<WorkoutScreen>
             children: [
               const Text(
                 '운동',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF111111),
-                ),
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900),
               ),
 
               if (!isWorkoutStarted) ...[
                 const SizedBox(height: 8),
                 const Text(
                   '오늘의 운동을 시작해보세요.',
-                  style: TextStyle(fontSize: 15, color: Color(0xFF666666)),
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                 ),
               ],
             ],
@@ -945,11 +1002,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       children: [
         const Text(
           '운동 부위 선택',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF111111),
-          ),
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 14),
 
@@ -975,13 +1028,17 @@ class _WorkoutScreenState extends State<WorkoutScreen>
                   vertical: 13,
                 ),
                 decoration: BoxDecoration(
-                  color: selected ? pointColor : const Color(0xFFF4F5F7),
+                  color: selected
+                      ? pointColor
+                      : Theme.of(context).colorScheme.surfaceContainer,
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Text(
                   part,
                   style: TextStyle(
-                    color: selected ? Colors.white : const Color(0xFF111111),
+                    color: selected
+                        ? Colors.white
+                        : Theme.of(context).colorScheme.onSurface,
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                   ),
@@ -1000,11 +1057,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       children: [
         const Text(
           '목표 거리',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF111111),
-          ),
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 14),
         Row(
@@ -1017,7 +1070,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
                   hintText: '예: 5',
                   suffixText: 'km',
                   filled: true,
-                  fillColor: const Color(0xFFF4F5F7),
+                  fillColor: Theme.of(context).colorScheme.surfaceContainer,
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 18,
                     vertical: 16,
@@ -1115,11 +1168,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
               const SizedBox(height: 30),
               const Text(
                 '오늘 운동 완료',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF111111),
-                ),
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 16),
               for (final record in previousRecords) _buildHistoryCard(record),
@@ -1169,7 +1218,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F7),
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(30),
       ),
       child: Column(
@@ -1177,11 +1226,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         children: [
           const Text(
             '오늘 운동 완료',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF111111),
-            ),
+            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 28),
 
@@ -1261,8 +1306,8 @@ class _WorkoutScreenState extends State<WorkoutScreen>
                     : '인증샷 변경',
               ),
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF5B5FFF),
-                side: const BorderSide(color: Color(0xFF5B5FFF), width: 1.3),
+                foregroundColor: pointColor,
+                side: BorderSide(color: pointColor, width: 1.3),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
@@ -1280,11 +1325,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         Text(
           title,
 
-          style: const TextStyle(
-            fontSize: 16,
-            color: Color(0xFF666666),
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
 
         const Spacer(),
@@ -1292,11 +1333,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         Text(
           value,
 
-          style: const TextStyle(
-            fontSize: 20,
-            color: Color(0xFF111111),
-            fontWeight: FontWeight.w900,
-          ),
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
         ),
       ],
     );
@@ -1308,11 +1345,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         const Expanded(
           child: Text(
             '운동 기록',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF111111),
-            ),
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
           ),
         ),
         _SmallCircleButton(
@@ -1349,11 +1382,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       children: [
         const Text(
           '러닝 중',
-          style: TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.w900,
-            color: Color(0xFF111111),
-          ),
+          style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 18),
 
@@ -1361,7 +1390,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 28),
           decoration: BoxDecoration(
-            color: const Color(0xFFF4F5F7),
+            color: Theme.of(context).colorScheme.surfaceContainer,
             borderRadius: BorderRadius.circular(32),
           ),
           child: Column(
@@ -1444,18 +1473,13 @@ class _WorkoutScreenState extends State<WorkoutScreen>
           style: TextStyle(
             fontSize: fontSize,
             fontWeight: FontWeight.w900,
-            color: const Color(0xFF111111),
             height: 1,
           ),
         ),
         const SizedBox(height: 12),
         Text(
           unit.isEmpty ? title : '$title · $unit',
-          style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF666666),
-          ),
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
         ),
       ],
     );
@@ -1473,7 +1497,6 @@ class _WorkoutScreenState extends State<WorkoutScreen>
           style: const TextStyle(
             fontSize: 34,
             fontWeight: FontWeight.w900,
-            color: Color(0xFF111111),
             height: 1,
           ),
         ),
@@ -1481,11 +1504,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         Text(
           unit.isEmpty ? title : '$title $unit',
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF666666),
-          ),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
         ),
       ],
     );
@@ -1512,13 +1531,17 @@ class _WorkoutTypeChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
         decoration: BoxDecoration(
-          color: selected ? pointColor : const Color(0xFFF4F5F7),
+          color: selected
+              ? pointColor
+              : Theme.of(context).colorScheme.surfaceContainer,
           borderRadius: BorderRadius.circular(18),
         ),
         child: Text(
           title,
           style: TextStyle(
-            color: selected ? Colors.white : const Color(0xFF111111),
+            color: selected
+                ? Colors.white
+                : Theme.of(context).colorScheme.onSurface,
             fontSize: 15,
             fontWeight: FontWeight.w800,
           ),
@@ -1569,7 +1592,7 @@ class _ExerciseRecordCardState extends State<ExerciseRecordCard> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F7),
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(26),
       ),
       child: Column(
@@ -1586,7 +1609,6 @@ class _ExerciseRecordCardState extends State<ExerciseRecordCard> {
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF111111),
                   ),
                 ),
               ),
@@ -1633,7 +1655,6 @@ class _ExerciseRecordCardState extends State<ExerciseRecordCard> {
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF111111),
                       ),
                     ),
                   ),
@@ -1687,7 +1708,6 @@ class _ExerciseRecordCardState extends State<ExerciseRecordCard> {
 const TextStyle _tableHeaderStyle = TextStyle(
   fontSize: 13,
   fontWeight: FontWeight.w700,
-  color: Color(0xFF777777),
 );
 
 class _RecordInput extends StatelessWidget {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/ranking_entry.dart';
 import '../services/ranking_service.dart';
+import '../theme/app_theme.dart';
 
 class RankingScreen extends StatefulWidget {
   const RankingScreen({super.key});
@@ -11,7 +12,7 @@ class RankingScreen extends StatefulWidget {
 }
 
 class _RankingScreenState extends State<RankingScreen> {
-  final Color pointColor = const Color(0xFF5B5FFF);
+  Color get pointColor => Theme.of(context).colorScheme.primary;
   final RankingService rankingService = RankingService();
   RankingPeriod selectedPeriod = RankingPeriod.week;
 
@@ -22,20 +23,20 @@ class _RankingScreenState extends State<RankingScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
           children: [
-            const Text(
+            Text(
               '랭킹',
               style: TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.w900,
-                color: Color(0xFF111111),
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               '친구들과 운동 기록을 비교해보세요.',
               style: TextStyle(
                 fontSize: 15,
-                color: Color(0xFF666666),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -55,8 +56,16 @@ class _RankingScreenState extends State<RankingScreen> {
                   );
                 }
 
-                final daysRanking = [...entries]..sort(_compareWorkoutDays);
-                final timeRanking = [...entries]..sort(_compareWorkoutTime);
+                final sortedByDays = [...entries]..sort(_compareWorkoutDays);
+                final sortedByTime = [...entries]..sort(_compareWorkoutTime);
+                final daysRanking = _assignCompetitionRanks(
+                  sortedByDays,
+                  (entry) => entry.workoutDays,
+                );
+                final timeRanking = _assignCompetitionRanks(
+                  sortedByTime,
+                  (entry) => entry.durationSeconds,
+                );
                 return Column(
                   children: [
                     _RankingSection(
@@ -112,7 +121,7 @@ class _RankingScreenState extends State<RankingScreen> {
     return Container(
       padding: const EdgeInsets.all(5),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F7),
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -133,6 +142,34 @@ class _RankingScreenState extends State<RankingScreen> {
       ),
     );
   }
+}
+
+class _RankedEntry {
+  const _RankedEntry({required this.entry, required this.rank});
+
+  final RankingEntry entry;
+  final int rank;
+}
+
+List<_RankedEntry> _assignCompetitionRanks(
+  List<RankingEntry> sortedEntries,
+  int Function(RankingEntry entry) valueOf,
+) {
+  final rankedEntries = <_RankedEntry>[];
+  int? previousValue;
+  var currentRank = 0;
+
+  for (var index = 0; index < sortedEntries.length; index++) {
+    final entry = sortedEntries[index];
+    final value = valueOf(entry);
+    if (index == 0 || value != previousValue) {
+      currentRank = index + 1;
+    }
+    rankedEntries.add(_RankedEntry(entry: entry, rank: currentRank));
+    previousValue = value;
+  }
+
+  return rankedEntries;
 }
 
 class _PeriodButton extends StatelessWidget {
@@ -163,7 +200,9 @@ class _PeriodButton extends StatelessWidget {
           child: Text(
             title,
             style: TextStyle(
-              color: selected ? Colors.white : const Color(0xFF666666),
+              color: selected
+                  ? Colors.white
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 15,
               fontWeight: FontWeight.w900,
             ),
@@ -183,7 +222,7 @@ class _RankingSection extends StatelessWidget {
   });
 
   final String title;
-  final List<RankingEntry> rankings;
+  final List<_RankedEntry> rankings;
   final String Function(RankingEntry) valueBuilder;
   final Color pointColor;
 
@@ -192,7 +231,7 @@ class _RankingSection extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F7),
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(26),
       ),
       child: Column(
@@ -200,18 +239,18 @@ class _RankingSection extends StatelessWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 19,
               fontWeight: FontWeight.w900,
-              color: Color(0xFF111111),
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 12),
           for (var index = 0; index < rankings.length; index++)
             _RankingRow(
-              rank: index + 1,
-              data: rankings[index],
-              value: valueBuilder(rankings[index]),
+              rank: rankings[index].rank,
+              data: rankings[index].entry,
+              value: valueBuilder(rankings[index].entry),
               pointColor: pointColor,
             ),
         ],
@@ -236,11 +275,16 @@ class _RankingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isFirst = rank == 1;
+    final sectionBackground = context.colors.surfaceContainer;
+    final rowBackground = isFirst
+        ? context.colors.surfaceContainerHigh
+        : sectionBackground;
+    final rowForeground = context.foregroundFor(rowBackground);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
-        color: isFirst ? Colors.white : Colors.transparent,
+        color: isFirst ? rowBackground : Colors.transparent,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
@@ -252,7 +296,7 @@ class _RankingRow extends StatelessWidget {
               style: TextStyle(
                 fontSize: isFirst ? 22 : 17,
                 fontWeight: FontWeight.w900,
-                color: isFirst ? pointColor : const Color(0xFF111111),
+                color: isFirst ? pointColor : rowForeground,
               ),
             ),
           ),
@@ -264,10 +308,10 @@ class _RankingRow extends StatelessWidget {
                   child: Text(
                     data.name,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF111111),
+                      color: rowForeground,
                     ),
                   ),
                 ),
@@ -301,7 +345,7 @@ class _RankingRow extends StatelessWidget {
             style: TextStyle(
               fontSize: isFirst ? 17 : 15,
               fontWeight: FontWeight.w900,
-              color: isFirst ? pointColor : const Color(0xFF111111),
+              color: isFirst ? pointColor : rowForeground,
             ),
           ),
         ],

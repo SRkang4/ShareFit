@@ -20,6 +20,8 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final navigationColor = colors.primary;
     final screens = <Widget>[
       const HomeScreen(),
       WorkoutScreen(isActive: selectedIndex == 1),
@@ -33,11 +35,11 @@ class _MainScreenState extends State<MainScreen> {
       bottomNavigationBar: Container(
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
         decoration: BoxDecoration(
-          color: const Color(0xFF5B5FFF),
+          color: navigationColor,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF5B5FFF).withOpacity(0.25),
+              color: navigationColor.withValues(alpha: 0.25),
               blurRadius: 20,
               offset: const Offset(0, 10),
             ),
@@ -47,16 +49,16 @@ class _MainScreenState extends State<MainScreen> {
           data: NavigationBarThemeData(
             backgroundColor: Colors.transparent,
 
-            indicatorColor: const Color(0xFF7C82FF),
+            indicatorColor: Colors.white.withValues(alpha: 0.18),
 
             iconTheme: WidgetStateProperty.resolveWith<IconThemeData>((states) {
-              return const IconThemeData(color: Colors.white, size: 24);
+              return IconThemeData(color: Colors.white, size: 24);
             }),
 
             labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>((
               states,
             ) {
-              return const TextStyle(
+              return TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
               );

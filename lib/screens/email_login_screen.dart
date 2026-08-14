@@ -115,7 +115,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
           margin: const EdgeInsets.symmetric(horizontal: 20),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           decoration: BoxDecoration(
-            color: const Color(0xFF5B5FFF),
+            color: Theme.of(context).colorScheme.primary,
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
@@ -150,18 +150,19 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const pointColor = Color(0xFF5B5FFF);
+    final colors = Theme.of(context).colorScheme;
+    final pointColor = colors.primary;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: colors.surface,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: colors.surface,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back_ios_new_rounded,
-            color: Color(0xFF111111),
+            color: colors.onSurface,
             size: 20,
           ),
           onPressed: () {
@@ -181,37 +182,39 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           '이메일로 로그인',
                           style: TextStyle(
                             fontSize: 30,
                             fontWeight: FontWeight.w900,
-                            color: Color(0xFF111111),
+                            color: Theme.of(context).colorScheme.onSurface,
                             letterSpacing: -0.8,
                           ),
                         ),
 
                         const SizedBox(height: 10),
 
-                        const Text(
+                        Text(
                           'ShareFit 계정으로 계속할게요.',
                           style: TextStyle(
                             fontSize: 15,
                             height: 1.4,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF777777),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                             letterSpacing: -0.2,
                           ),
                         ),
 
                         const SizedBox(height: 60),
 
-                        const Text(
+                        Text(
                           '이메일',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF111111),
+                            color: Theme.of(context).colorScheme.onSurface,
                             letterSpacing: -0.2,
                           ),
                         ),
@@ -229,7 +232,9 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                               fontWeight: FontWeight.w600,
                             ),
                             filled: true,
-                            fillColor: const Color(0xFFF7F7F8),
+                            fillColor: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainer,
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 18,
                               vertical: 18,
@@ -243,12 +248,12 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
 
                         const SizedBox(height: 22),
 
-                        const Text(
+                        Text(
                           '비밀번호',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF111111),
+                            color: Theme.of(context).colorScheme.onSurface,
                             letterSpacing: -0.2,
                           ),
                         ),
@@ -266,7 +271,9 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                               fontWeight: FontWeight.w600,
                             ),
                             filled: true,
-                            fillColor: const Color(0xFFF7F7F8),
+                            fillColor: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainer,
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 18,
                               vertical: 18,
@@ -276,7 +283,9 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                 _obscurePassword
                                     ? Icons.visibility_off_rounded
                                     : Icons.visibility_rounded,
-                                color: const Color(0xFF999999),
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                               ),
                               onPressed: () {
                                 setState(() {
@@ -298,7 +307,9 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                           child: TextButton(
                             onPressed: () {},
                             style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF777777),
+                              foregroundColor: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                               padding: EdgeInsets.zero,
                               minimumSize: const Size(0, 36),
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,

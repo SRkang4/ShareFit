@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 
 import 'app.dart';
 import 'firebase_options.dart';
+import 'theme/theme_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await ThemeController.instance.load();
 
   runApp(const ShareFitApp());
 }

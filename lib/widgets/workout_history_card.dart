@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../models/workout_record.dart';
+import '../theme/app_theme.dart';
 
 class WorkoutHistoryCard extends StatefulWidget {
   const WorkoutHistoryCard({
@@ -28,6 +29,7 @@ class _WorkoutHistoryCardState extends State<WorkoutHistoryCard>
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final workout = widget.workout;
     final isStrength = workout.type == 'strength';
     final strength = workout.strength;
@@ -40,7 +42,7 @@ class _WorkoutHistoryCardState extends State<WorkoutHistoryCard>
         margin: const EdgeInsets.only(bottom: 14),
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          color: const Color(0xFFF4F5F7),
+          color: colors.surfaceContainer,
           borderRadius: BorderRadius.circular(28),
         ),
         child: Column(
@@ -49,10 +51,10 @@ class _WorkoutHistoryCardState extends State<WorkoutHistoryCard>
             if (widget.title != null) ...[
               Text(
                 widget.title!,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w900,
-                  color: Color(0xFF111111),
+                  color: colors.onSurface,
                 ),
               ),
               const SizedBox(height: 22),
@@ -117,7 +119,7 @@ class _WorkoutHistoryCardState extends State<WorkoutHistoryCard>
                         _expanded
                             ? Icons.keyboard_arrow_up_rounded
                             : Icons.keyboard_arrow_down_rounded,
-                        color: const Color(0xFF5B5FFF),
+                        color: colors.primary,
                         size: 28,
                       ),
                     ),
@@ -167,11 +169,8 @@ class _WorkoutHistoryCardState extends State<WorkoutHistoryCard>
                         : '인증샷 변경',
                   ),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF5B5FFF),
-                    side: const BorderSide(
-                      color: Color(0xFF5B5FFF),
-                      width: 1.3,
-                    ),
+                    foregroundColor: colors.primary,
+                    side: BorderSide(color: colors.primary, width: 1.3),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
                     ),
@@ -193,10 +192,10 @@ class _WorkoutHistoryCardState extends State<WorkoutHistoryCard>
         children: [
           Text(
             exercise.name,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w900,
-              color: Color(0xFF111111),
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 10),
@@ -207,16 +206,18 @@ class _WorkoutHistoryCardState extends State<WorkoutHistoryCard>
                 children: [
                   Text(
                     '${index + 1}세트',
-                    style: const TextStyle(
-                      color: Color(0xFF666666),
+                    style: TextStyle(
+                      color: context.secondaryForegroundFor(
+                        Theme.of(context).colorScheme.surfaceContainer,
+                      ),
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   const Spacer(),
                   Text(
                     '${_formatNumber(exercise.sets[index].weightKg)}kg × ${exercise.sets[index].reps}회',
-                    style: const TextStyle(
-                      color: Color(0xFF111111),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -258,18 +259,20 @@ class _SummaryRow extends StatelessWidget {
       children: [
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 15,
-            color: Color(0xFF666666),
+            color: context.secondaryForegroundFor(
+              Theme.of(context).colorScheme.surfaceContainer,
+            ),
             fontWeight: FontWeight.w600,
           ),
         ),
         const Spacer(),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 17,
-            color: Color(0xFF111111),
+            color: Theme.of(context).colorScheme.onSurface,
             fontWeight: FontWeight.w900,
           ),
         ),

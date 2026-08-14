@@ -22,7 +22,7 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
 
-  static const pointColor = Color(0xFF5B5FFF);
+  Color get pointColor => Theme.of(context).colorScheme.primary;
   final AuthService _authService = AuthService();
 
   Future<void> _signup() async {
@@ -140,7 +140,7 @@ class _SignupScreenState extends State<SignupScreen> {
           margin: const EdgeInsets.symmetric(horizontal: 20),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           decoration: BoxDecoration(
-            color: pointColor,
+            color: Theme.of(context).colorScheme.primary,
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
@@ -189,10 +189,10 @@ class _SignupScreenState extends State<SignupScreen> {
   Widget _title(String text) {
     return Text(
       text,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 14,
         fontWeight: FontWeight.w800,
-        color: Color(0xFF111111),
+        color: Theme.of(context).colorScheme.onSurface,
         letterSpacing: -0.2,
       ),
     );
@@ -220,7 +220,7 @@ class _SignupScreenState extends State<SignupScreen> {
           fontWeight: FontWeight.w600,
         ),
         filled: true,
-        fillColor: const Color(0xFFF7F7F8),
+        fillColor: Theme.of(context).colorScheme.surfaceContainer,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 18,
           vertical: 18,
@@ -237,15 +237,15 @@ class _SignupScreenState extends State<SignupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back_ios_new_rounded,
-            color: Color(0xFF111111),
+            color: Theme.of(context).colorScheme.onSurface,
             size: 20,
           ),
           onPressed: () {
@@ -265,25 +265,27 @@ class _SignupScreenState extends State<SignupScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           '회원가입',
                           style: TextStyle(
                             fontSize: 30,
                             fontWeight: FontWeight.w900,
-                            color: Color(0xFF111111),
+                            color: Theme.of(context).colorScheme.onSurface,
                             letterSpacing: -0.8,
                           ),
                         ),
 
                         const SizedBox(height: 10),
 
-                        const Text(
+                        Text(
                           '친구들과 운동을 공유해보세요.',
                           style: TextStyle(
                             fontSize: 15,
                             height: 1.4,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF777777),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                             letterSpacing: -0.2,
                           ),
                         ),
@@ -317,7 +319,9 @@ class _SignupScreenState extends State<SignupScreen> {
                               _obscurePassword
                                   ? Icons.visibility_off_rounded
                                   : Icons.visibility_rounded,
-                              color: const Color(0xFF999999),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                             onPressed: () {
                               setState(() {
@@ -343,7 +347,9 @@ class _SignupScreenState extends State<SignupScreen> {
                               _obscureConfirmPassword
                                   ? Icons.visibility_off_rounded
                                   : Icons.visibility_rounded,
-                              color: const Color(0xFF999999),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                             onPressed: () {
                               setState(() {
