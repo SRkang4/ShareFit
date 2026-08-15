@@ -72,7 +72,7 @@ class WorkoutProgressNotificationService {
   Future<void> stop() async {
     _isActive = false;
     _lastUpdateAt = null;
-    if (!Platform.isAndroid) return;
+    if (!Platform.isAndroid && !Platform.isIOS) return;
     await _channel.invokeMethod<void>('stop');
   }
 
@@ -115,13 +115,16 @@ class WorkoutProgressNotificationService {
   }) async {
     _isActive = true;
     _lastUpdateAt = DateTime.now();
-    if (!Platform.isAndroid) return;
-    await _channel.invokeMethod<void>('requestPermission');
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (Platform.isAndroid) {
+      await _channel.invokeMethod<void>('requestPermission');
+    }
     await _channel.invokeMethod<void>('show', {
       'title': title,
       'content': content,
       'durationSeconds': durationSeconds,
       'isPaused': isPaused,
+      'workoutType': title.startsWith('러닝') ? 'running' : 'strength',
     });
   }
 
@@ -132,7 +135,7 @@ class WorkoutProgressNotificationService {
     required bool isPaused,
     required bool force,
   }) async {
-    if (!_isActive || !Platform.isAndroid) return;
+    if (!_isActive || (!Platform.isAndroid && !Platform.isIOS)) return;
     final now = DateTime.now();
     if (!force &&
         _lastUpdateAt != null &&
@@ -145,6 +148,7 @@ class WorkoutProgressNotificationService {
       'content': content,
       'durationSeconds': durationSeconds,
       'isPaused': isPaused,
+      'workoutType': title.startsWith('러닝') ? 'running' : 'strength',
     });
   }
 
