@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'photo_expiration.dart';
+
 class PublicActivity {
   const PublicActivity({
     required this.uid,
@@ -9,6 +11,8 @@ class PublicActivity {
     this.endedAt,
     this.durationSeconds,
     this.photoUrl,
+    this.photoCreatedAt,
+    this.photoExpiresAt,
     this.lastWorkoutAt,
     this.strengthSummary,
     this.runningSummary,
@@ -21,9 +25,14 @@ class PublicActivity {
   final DateTime? endedAt;
   final int? durationSeconds;
   final String? photoUrl;
+  final DateTime? photoCreatedAt;
+  final DateTime? photoExpiresAt;
   final DateTime? lastWorkoutAt;
   final PublicStrengthSummary? strengthSummary;
   final PublicRunningSummary? runningSummary;
+
+  String? get validPhotoUrl =>
+      PhotoExpiration.validUrl(photoUrl: photoUrl, expiresAt: photoExpiresAt);
 
   factory PublicActivity.fromFirestore(String uid, Map<String, dynamic>? data) {
     DateTime? date(String key) =>
@@ -36,6 +45,8 @@ class PublicActivity {
       endedAt: date('endedAt'),
       durationSeconds: (data?['durationSeconds'] as num?)?.toInt(),
       photoUrl: data?['photoUrl'] as String?,
+      photoCreatedAt: date('photoCreatedAt'),
+      photoExpiresAt: date('photoExpiresAt'),
       lastWorkoutAt: date('lastWorkoutAt'),
       strengthSummary: data?['strengthSummary'] is Map
           ? PublicStrengthSummary.fromMap(

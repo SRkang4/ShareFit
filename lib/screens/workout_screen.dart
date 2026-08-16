@@ -1,15 +1,18 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
 
 import '../models/workout_record.dart';
+import '../services/auth_service.dart';
 import '../services/location_tracking_service.dart';
 import '../services/public_activity_service.dart';
 import '../services/workout_progress_notification_service.dart';
+import '../services/workout_photo_service.dart';
 import '../services/workout_service.dart';
 import '../widgets/workout_history_card.dart';
 
@@ -37,14 +40,18 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   final List<ExerciseCardData> exercises = [ExerciseCardData()];
   final Map<String, WorkoutRecord> locallyCompletedWorkouts = {};
   final Map<String, File> workoutImages = {};
+  final Set<String> uploadingPhotoWorkoutIds = {};
   final TextEditingController runningGoalController = TextEditingController();
   final LocationTrackingService locationTrackingService =
       LocationTrackingService();
+  final AuthService authService = AuthService();
   final WorkoutService workoutService = WorkoutService();
   final PublicActivityService publicActivityService = PublicActivityService();
   final WorkoutProgressNotificationService progressNotificationService =
       WorkoutProgressNotificationService();
+  final WorkoutPhotoService workoutPhotoService = WorkoutPhotoService();
   late final Stream<List<WorkoutRecord>> todayWorkoutsStream;
+  late final Future<bool> isProFuture;
   String? justCompletedWorkoutId;
   double runningDistanceMeters = 0.0;
   Position? lastRunningPosition;
@@ -71,6 +78,51 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     todayWorkoutsStream = workoutService.watchTodayWorkouts();
+    isProFuture = _loadIsPro();
+  }
+
+  Future<bool> _loadIsPro() async {
+    final userData = await authService.getCurrentUserData();
+    return userData?['isPro'] == true;
+  }
+
+  bool _hasWorkoutPhoto(WorkoutRecord workout) {
+    return workout.hasValidPhoto;
+  }
+
+  Future<bool> _canStartPhotoUpload(String workoutId) async {
+    final userData = await authService.getCurrentUserData();
+    final isPro = userData?['isPro'] == true;
+    debugPrint('[WorkoutPhoto][$workoutId] 업로드 전 isPro=$isPro');
+    if (isPro) return true;
+
+    final todayWorkouts = await workoutService.getTodayWorkouts();
+    WorkoutRecord? targetWorkout;
+    for (final workout in todayWorkouts) {
+      if (workout.id == workoutId) {
+        targetWorkout = workout;
+        break;
+      }
+    }
+
+    if (targetWorkout != null && _hasWorkoutPhoto(targetWorkout)) {
+      debugPrint('[WorkoutPhoto][$workoutId] 기존 사진 교체이므로 Free 제한 제외');
+      return true;
+    }
+
+    final hasAnotherPhoto = todayWorkouts.any(
+      (workout) => workout.id != workoutId && _hasWorkoutPhoto(workout),
+    );
+    final hasAnotherUpload = uploadingPhotoWorkoutIds.any(
+      (uploadingId) => uploadingId != workoutId,
+    );
+    final canUpload = !hasAnotherPhoto && !hasAnotherUpload;
+    debugPrint(
+      '[WorkoutPhoto][$workoutId] Free 업로드 검사: '
+      'hasAnotherPhoto=$hasAnotherPhoto, '
+      'hasAnotherUpload=$hasAnotherUpload, canUpload=$canUpload',
+    );
+    return canUpload;
   }
 
   @override
@@ -379,6 +431,8 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         endedAt: workoutRecord.endedAt,
         durationSeconds: workoutRecord.durationSeconds,
         photoUrl: workoutRecord.photoUrl,
+        photoCreatedAt: workoutRecord.photoCreatedAt,
+        photoExpiresAt: workoutRecord.photoExpiresAt,
         strength: workoutRecord.strength,
         running: workoutRecord.running,
       );
@@ -769,18 +823,140 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   }
 
   Future<void> pickWorkoutImage(String workoutId) async {
-    final picker = ImagePicker();
-
-    final pickedImage = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 80,
+    debugPrint('[WorkoutPhoto][$workoutId] 인증사진 버튼 클릭');
+    if (uploadingPhotoWorkoutIds.contains(workoutId)) {
+      debugPrint(
+        '[WorkoutPhoto][$workoutId] 중복 업로드 방지 조건 진입: '
+        '이미 처리 중이므로 반환',
+      );
+      return;
+    }
+    uploadingPhotoWorkoutIds.add(workoutId);
+    debugPrint(
+      '[WorkoutPhoto][$workoutId] 처리 상태 등록 완료: '
+      'contains=${uploadingPhotoWorkoutIds.contains(workoutId)}',
     );
+    final picker = ImagePicker();
+    String? uploadedUrl;
 
-    if (pickedImage == null) return;
+    try {
+      debugPrint('[WorkoutPhoto][$workoutId] Free/Pro 업로드 제한 재검사 시작');
+      final canUpload = await _canStartPhotoUpload(workoutId);
+      debugPrint(
+        '[WorkoutPhoto][$workoutId] Free/Pro 업로드 제한 재검사 완료: '
+        'canUpload=$canUpload',
+      );
+      if (!canUpload) return;
 
-    setState(() {
-      workoutImages[workoutId] = File(pickedImage.path);
-    });
+      debugPrint('[WorkoutPhoto][$workoutId] ImagePicker 카메라 실행 직전');
+      final pickedImage = await picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 80,
+      );
+      debugPrint(
+        '[WorkoutPhoto][$workoutId] XFile 반환 여부: '
+        '${pickedImage == null ? 'null(촬영 취소)' : '반환됨'}',
+      );
+      if (pickedImage == null) return;
+      debugPrint(
+        '[WorkoutPhoto][$workoutId] pickedImage.path=${pickedImage.path}',
+      );
+
+      final imageFile = File(pickedImage.path);
+      final fileExists = await imageFile.exists();
+      debugPrint('[WorkoutPhoto][$workoutId] File.exists()=$fileExists');
+      if (fileExists) {
+        final fileLength = await imageFile.length();
+        debugPrint('[WorkoutPhoto][$workoutId] 파일 크기=$fileLength bytes');
+      }
+      debugPrint('[WorkoutPhoto][$workoutId] Storage 업로드 함수 호출 직전');
+      final uploadResult = await workoutPhotoService.uploadCompletionPhoto(
+        workoutId: workoutId,
+        image: imageFile,
+      );
+      uploadedUrl = uploadResult.downloadUrl;
+      final photoCreatedAt = uploadResult.createdAt;
+      final photoExpiresAt = photoCreatedAt.add(const Duration(days: 30));
+      debugPrint(
+        '[WorkoutPhoto][$workoutId] Storage 업로드 함수 완료: '
+        'downloadUrl=$uploadedUrl, photoCreatedAt=$photoCreatedAt, '
+        'photoExpiresAt=$photoExpiresAt',
+      );
+      debugPrint('[WorkoutPhoto][$workoutId] Firestore updateWorkoutPhoto 시작');
+      final previousPhotoUrl = await workoutService.updateWorkoutPhoto(
+        workoutId: workoutId,
+        photoUrl: uploadedUrl,
+        photoCreatedAt: photoCreatedAt,
+        photoExpiresAt: photoExpiresAt,
+      );
+      debugPrint(
+        '[WorkoutPhoto][$workoutId] Firestore updateWorkoutPhoto 완료: '
+        'previousPhotoUrl=$previousPhotoUrl',
+      );
+      if (previousPhotoUrl != null && previousPhotoUrl != uploadedUrl) {
+        try {
+          debugPrint('[WorkoutPhoto][$workoutId] 이전 Storage 사진 삭제 시작');
+          await workoutPhotoService.deleteByDownloadUrl(previousPhotoUrl);
+          debugPrint('[WorkoutPhoto][$workoutId] 이전 Storage 사진 삭제 완료');
+        } catch (e, stackTrace) {
+          debugPrint('[WorkoutPhoto][$workoutId] 이전 Storage 사진 삭제 실패: $e');
+          debugPrintStack(stackTrace: stackTrace);
+          // The new Firestore URL is already valid; stale-file cleanup can be
+          // retried independently without failing the user's photo update.
+        }
+      }
+
+      if (!mounted) {
+        debugPrint('[WorkoutPhoto][$workoutId] UI setState 생략: mounted=false');
+        return;
+      }
+      debugPrint('[WorkoutPhoto][$workoutId] UI setState 직전');
+      setState(() {
+        workoutImages[workoutId] = imageFile;
+      });
+      debugPrint('[WorkoutPhoto][$workoutId] UI setState 완료');
+    } catch (e, stackTrace) {
+      if (e is FirebaseException) {
+        debugPrint(
+          '[WorkoutPhoto][$workoutId] FirebaseException: '
+          'plugin=${e.plugin}, code=${e.code}, message=${e.message}',
+        );
+      }
+      debugPrint('[WorkoutPhoto][$workoutId] 인증사진 처리 실패: $e');
+      debugPrintStack(stackTrace: stackTrace);
+      if (uploadedUrl != null) {
+        try {
+          debugPrint('[WorkoutPhoto][$workoutId] 실패 후 업로드 파일 정리 시작');
+          await workoutPhotoService.deleteByDownloadUrl(uploadedUrl);
+          debugPrint('[WorkoutPhoto][$workoutId] 실패 후 업로드 파일 정리 완료');
+        } catch (cleanupError, cleanupStackTrace) {
+          if (cleanupError is FirebaseException) {
+            debugPrint(
+              '[WorkoutPhoto][$workoutId] 정리 FirebaseException: '
+              'plugin=${cleanupError.plugin}, code=${cleanupError.code}, '
+              'message=${cleanupError.message}',
+            );
+          }
+          debugPrint(
+            '[WorkoutPhoto][$workoutId] 실패 후 업로드 파일 정리 실패: '
+            '$cleanupError',
+          );
+          debugPrintStack(stackTrace: cleanupStackTrace);
+          // Preserve the original upload error shown to the user.
+        }
+      }
+      if (mounted) {
+        _showError('인증 사진을 저장하지 못했습니다. 다시 시도해주세요.');
+      }
+    } finally {
+      debugPrint('[WorkoutPhoto][$workoutId] finally 진입');
+      final removed = uploadingPhotoWorkoutIds.remove(workoutId);
+      debugPrint(
+        '[WorkoutPhoto][$workoutId] 처리 상태 제거 결과: '
+        'removed=$removed, '
+        'contains=${uploadingPhotoWorkoutIds.contains(workoutId)}',
+      );
+    }
   }
 
   void resetCurrentWorkout() {
@@ -857,7 +1033,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
           ? SafeArea(
               child: Container(
                 padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.surface,
                 child: Row(
                   children: [
                     Expanded(
@@ -1122,71 +1298,94 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   }
 
   Widget _buildIdleWorkoutContent() {
-    return StreamBuilder<List<WorkoutRecord>>(
-      stream: todayWorkoutsStream,
-      initialData: const [],
-      builder: (context, snapshot) {
-        final records =
-            snapshot.data?.toList(growable: true) ?? <WorkoutRecord>[];
-        final justCompletedId = justCompletedWorkoutId;
-        WorkoutRecord? justCompleted;
-        if (justCompletedId != null) {
-          for (final record in records) {
-            if (record.id == justCompletedId) {
-              justCompleted = record;
-              break;
+    return FutureBuilder<bool>(
+      future: isProFuture,
+      builder: (context, proSnapshot) {
+        final isPro = proSnapshot.data == true;
+        return StreamBuilder<List<WorkoutRecord>>(
+          stream: todayWorkoutsStream,
+          initialData: const [],
+          builder: (context, snapshot) {
+            final records =
+                snapshot.data?.toList(growable: true) ?? <WorkoutRecord>[];
+            final hasTodayPhoto = records.any(_hasWorkoutPhoto);
+            final justCompletedId = justCompletedWorkoutId;
+            WorkoutRecord? justCompleted;
+            if (justCompletedId != null) {
+              for (final record in records) {
+                if (record.id == justCompletedId) {
+                  justCompleted = record;
+                  break;
+                }
+              }
+              justCompleted ??= locallyCompletedWorkouts[justCompletedId];
             }
-          }
-          justCompleted ??= locallyCompletedWorkouts[justCompletedId];
-        }
-        final previousRecords = records
-            .where((record) => record.id != justCompletedId)
-            .toList();
-        final workoutSetup = <Widget>[
-          _buildWorkoutTypeSelector(),
-          const SizedBox(height: 26),
-          if (selectedWorkoutType == '헬스') ...[
-            _buildBodyPartSelector(),
-            const SizedBox(height: 32),
-          ],
-          if (selectedWorkoutType == '러닝') ...[
-            _buildRunningGoalInput(),
-            const SizedBox(height: 32),
-          ],
-          _buildStartButton(),
-        ];
+            final previousRecords = records
+                .where((record) => record.id != justCompletedId)
+                .toList();
+            final workoutSetup = <Widget>[
+              _buildWorkoutTypeSelector(),
+              const SizedBox(height: 26),
+              if (selectedWorkoutType == '헬스') ...[
+                _buildBodyPartSelector(),
+                const SizedBox(height: 32),
+              ],
+              if (selectedWorkoutType == '러닝') ...[
+                _buildRunningGoalInput(),
+                const SizedBox(height: 32),
+              ],
+              _buildStartButton(),
+            ];
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (justCompleted != null) ...[
-              _buildHistoryCard(justCompleted, title: '오늘 운동 완료'),
-              const SizedBox(height: 10),
-            ],
-            ...workoutSetup,
-            if (previousRecords.isNotEmpty) ...[
-              const SizedBox(height: 30),
-              const Text(
-                '오늘 운동 완료',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 16),
-              for (final record in previousRecords) _buildHistoryCard(record),
-            ],
-          ],
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (justCompleted != null) ...[
+                  _buildHistoryCard(
+                    justCompleted,
+                    title: '오늘 운동 완료',
+                    canShowPhotoButton:
+                        isPro ||
+                        _hasWorkoutPhoto(justCompleted) ||
+                        !hasTodayPhoto,
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                ...workoutSetup,
+                if (previousRecords.isNotEmpty) ...[
+                  const SizedBox(height: 30),
+                  const Text(
+                    '오늘 운동 완료',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 16),
+                  for (final record in previousRecords)
+                    _buildHistoryCard(
+                      record,
+                      canShowPhotoButton:
+                          isPro || _hasWorkoutPhoto(record) || !hasTodayPhoto,
+                    ),
+                ],
+              ],
+            );
+          },
         );
       },
     );
   }
 
-  Widget _buildHistoryCard(WorkoutRecord workout, {String? title}) {
+  Widget _buildHistoryCard(
+    WorkoutRecord workout, {
+    String? title,
+    required bool canShowPhotoButton,
+  }) {
     final workoutId = workout.id;
     return WorkoutHistoryCard(
       key: ValueKey(workoutId),
       workout: workout,
       title: title,
       imageFile: workoutId == null ? null : workoutImages[workoutId],
-      onPhotoPressed: workoutId == null
+      onPhotoPressed: workoutId == null || !canShowPhotoButton
           ? null
           : () => pickWorkoutImage(workoutId),
     );
@@ -1207,7 +1406,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       totalVolumeKg: strength?.totalVolumeKg ?? 0,
       runningDistance: (running?.distanceMeters ?? 0) / 1000,
       runningPace: averagePace == null ? '-' : _formatPace(averagePace),
-      photoUrl: record.photoUrl,
+      photoUrl: record.validPhotoUrl,
       imageFile: record.id == null ? null : workoutImages[record.id],
     );
   }
@@ -1302,8 +1501,8 @@ class _WorkoutScreenState extends State<WorkoutScreen>
               icon: const Icon(Icons.camera_alt_outlined),
               label: Text(
                 workout.imageFile == null && workout.photoUrl == null
-                    ? '인증샷 추가'
-                    : '인증샷 변경',
+                    ? '인증사진 촬영'
+                    : '인증사진 다시 촬영',
               ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: pointColor,
@@ -1401,12 +1600,12 @@ class _WorkoutScreenState extends State<WorkoutScreen>
                 fontSize: 58,
               ),
 
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Divider(
                   height: 1,
                   thickness: 1,
-                  color: Color(0xFFD8DCE3),
+                  color: Theme.of(context).colorScheme.outlineVariant,
                 ),
               ),
 
@@ -1417,12 +1616,12 @@ class _WorkoutScreenState extends State<WorkoutScreen>
                 fontSize: 64,
               ),
 
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Divider(
                   height: 1,
                   thickness: 1,
-                  color: Color(0xFFD8DCE3),
+                  color: Theme.of(context).colorScheme.outlineVariant,
                 ),
               ),
 
@@ -1439,7 +1638,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
                   Container(
                     width: 1,
                     height: 86,
-                    color: const Color(0xFFD8DCE3),
+                    color: Theme.of(context).colorScheme.outlineVariant,
                   ),
 
                   Expanded(
@@ -1683,8 +1882,17 @@ class _ExerciseRecordCardState extends State<ExerciseRecordCard> {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: set.isDone ? widget.pointColor : Colors.white,
+                        color: set.isDone
+                            ? widget.pointColor
+                            : Theme.of(context).colorScheme.surface,
                         shape: BoxShape.circle,
+                        border: set.isDone
+                            ? null
+                            : Border.all(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.outlineVariant,
+                              ),
                       ),
                       child: Icon(
                         Icons.check,
@@ -1718,20 +1926,32 @@ class _RecordInput extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return TextField(
       controller: controller,
       keyboardType: TextInputType.number,
+      style: TextStyle(color: colorScheme.onSurface),
+      cursorColor: colorScheme.primary,
       decoration: InputDecoration(
         hintText: hint,
+        hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: colorScheme.surface,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 14,
           vertical: 12,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
+          borderSide: BorderSide(color: colorScheme.outlineVariant),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colorScheme.outlineVariant),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
         ),
       ),
     );

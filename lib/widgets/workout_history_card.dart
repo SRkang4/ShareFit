@@ -34,6 +34,8 @@ class _WorkoutHistoryCardState extends State<WorkoutHistoryCard>
     final isStrength = workout.type == 'strength';
     final strength = workout.strength;
     final running = workout.running;
+    final photoUrl = workout.validPhotoUrl;
+    final hasRemotePhoto = photoUrl != null;
 
     return AnimatedSize(
       duration: const Duration(milliseconds: 220),
@@ -134,7 +136,7 @@ class _WorkoutHistoryCardState extends State<WorkoutHistoryCard>
               ),
               ...?strength?.exercises.map(_buildExercise),
             ],
-            if (widget.imageFile != null || workout.photoUrl != null) ...[
+            if (widget.imageFile != null || hasRemotePhoto) ...[
               const SizedBox(height: 18),
               ClipRRect(
                 borderRadius: BorderRadius.circular(20),
@@ -146,7 +148,7 @@ class _WorkoutHistoryCardState extends State<WorkoutHistoryCard>
                         fit: BoxFit.cover,
                       )
                     : Image.network(
-                        workout.photoUrl!,
+                        photoUrl!,
                         width: double.infinity,
                         height: 180,
                         fit: BoxFit.cover,
@@ -164,9 +166,9 @@ class _WorkoutHistoryCardState extends State<WorkoutHistoryCard>
                   onPressed: widget.onPhotoPressed,
                   icon: const Icon(Icons.camera_alt_outlined),
                   label: Text(
-                    widget.imageFile == null && workout.photoUrl == null
-                        ? '인증샷 추가'
-                        : '인증샷 변경',
+                    widget.imageFile == null && !hasRemotePhoto
+                        ? '인증사진 촬영'
+                        : '인증사진 다시 촬영',
                   ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: colors.primary,

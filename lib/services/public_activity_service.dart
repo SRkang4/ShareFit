@@ -30,6 +30,8 @@ class PublicActivityService {
       'endedAt': null,
       'durationSeconds': null,
       'photoUrl': null,
+      'photoCreatedAt': null,
+      'photoExpiresAt': null,
       'strengthSummary': null,
       'runningSummary': null,
       'updatedAt': FieldValue.serverTimestamp(),

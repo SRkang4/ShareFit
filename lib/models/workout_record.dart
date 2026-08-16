@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'photo_expiration.dart';
+
 class WorkoutRecord {
   const WorkoutRecord({
     this.id,
@@ -9,6 +11,8 @@ class WorkoutRecord {
     required this.endedAt,
     required this.durationSeconds,
     this.photoUrl,
+    this.photoCreatedAt,
+    this.photoExpiresAt,
     this.strength,
     this.running,
   });
@@ -20,8 +24,16 @@ class WorkoutRecord {
   final DateTime endedAt;
   final int durationSeconds;
   final String? photoUrl;
+  final DateTime? photoCreatedAt;
+  final DateTime? photoExpiresAt;
   final StrengthWorkoutData? strength;
   final RunningWorkoutData? running;
+
+  bool get hasValidPhoto =>
+      PhotoExpiration.isValid(photoUrl: photoUrl, expiresAt: photoExpiresAt);
+
+  String? get validPhotoUrl =>
+      PhotoExpiration.validUrl(photoUrl: photoUrl, expiresAt: photoExpiresAt);
 
   Map<String, dynamic> toFirestore() {
     return {
@@ -33,6 +45,12 @@ class WorkoutRecord {
       'durationSeconds': durationSeconds,
       'createdAt': FieldValue.serverTimestamp(),
       'photoUrl': photoUrl,
+      'photoCreatedAt': photoCreatedAt == null
+          ? null
+          : Timestamp.fromDate(photoCreatedAt!),
+      'photoExpiresAt': photoExpiresAt == null
+          ? null
+          : Timestamp.fromDate(photoExpiresAt!),
       if (strength != null) 'strength': strength!.toFirestore(),
       if (running != null) 'running': running!.toFirestore(),
     };
@@ -61,6 +79,12 @@ class WorkoutRecord {
       endedAt: endedAt.toDate(),
       durationSeconds: durationSeconds.toInt(),
       photoUrl: data['photoUrl'] is String ? data['photoUrl'] as String : null,
+      photoCreatedAt: data['photoCreatedAt'] is Timestamp
+          ? (data['photoCreatedAt'] as Timestamp).toDate()
+          : null,
+      photoExpiresAt: data['photoExpiresAt'] is Timestamp
+          ? (data['photoExpiresAt'] as Timestamp).toDate()
+          : null,
       strength: data['strength'] is Map<String, dynamic>
           ? StrengthWorkoutData.fromFirestore(
               data['strength'] as Map<String, dynamic>,

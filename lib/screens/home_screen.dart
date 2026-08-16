@@ -38,9 +38,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     _clock = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted &&
-          _friends.any(
-            (friend) => _activities[friend.uid]?.status == 'workingOut',
-          )) {
+          (_friends.any(
+                (friend) => _activities[friend.uid]?.status == 'workingOut',
+              ) ||
+              _activities.values.any(
+                (activity) => activity.photoUrl != null,
+              ))) {
         setState(() {});
       }
     });
@@ -238,6 +241,7 @@ class _CompletedWorkoutCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final strength = activity.strengthSummary;
     final running = activity.runningSummary;
+    final photoUrl = activity.validPhotoUrl;
     final isRunning = activity.workoutType == 'running';
     final title = isRunning
         ? '러닝'
@@ -272,7 +276,7 @@ class _CompletedWorkoutCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                if (activity.photoUrl != null) _Photo(url: activity.photoUrl!),
+                if (photoUrl != null) _Photo(url: photoUrl),
                 SizedBox(
                   width: 44,
                   height: 44,
@@ -309,9 +313,9 @@ class _CompletedWorkoutCard extends StatelessWidget {
                 ),
                 _detail('평균 페이스', _pace(running?.averagePaceSecondsPerKm)),
               ],
-              if (activity.photoUrl != null) ...[
+              if (photoUrl != null) ...[
                 const SizedBox(height: 12),
-                _Photo(url: activity.photoUrl!, large: true),
+                _Photo(url: photoUrl, large: true),
               ],
             ],
           ],

@@ -192,7 +192,8 @@ service cloud.firestore {
       allow create, update: if signedIn() && request.auth.uid == uid &&
           request.resource.data.keys().hasOnly([
             'uid', 'status', 'workoutType', 'startedAt', 'endedAt',
-            'durationSeconds', 'photoUrl', 'lastWorkoutAt',
+            'durationSeconds', 'photoUrl', 'photoCreatedAt', 'photoExpiresAt',
+            'lastWorkoutAt',
             'strengthSummary', 'runningSummary', 'updatedAt'
           ]) &&
           request.resource.data.uid == uid &&
@@ -206,6 +207,10 @@ service cloud.firestore {
            request.resource.data.durationSeconds is int) &&
           (request.resource.data.get('photoUrl', null) == null ||
            request.resource.data.photoUrl is string) &&
+          (request.resource.data.get('photoCreatedAt', null) == null ||
+           request.resource.data.photoCreatedAt is timestamp) &&
+          (request.resource.data.get('photoExpiresAt', null) == null ||
+           request.resource.data.photoExpiresAt is timestamp) &&
           (request.resource.data.get('lastWorkoutAt', null) == null ||
            request.resource.data.lastWorkoutAt is timestamp);
 

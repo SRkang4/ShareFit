@@ -29,6 +29,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
   String displayName = '';
   DateTime? experienceStartDate;
   bool isLoadingProfile = true;
+  bool isPro = false;
   File? profileImageFile;
   late final Stream<List<WorkoutRecord>> _workoutsStream;
   late DateTime displayedWorkoutMonth;
@@ -73,6 +74,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
       setState(() {
         displayName = storedName is String ? storedName : '';
         experienceStartDate = validStartDate;
+        isPro = userData?['isPro'] == true;
         isLoadingProfile = false;
       });
     } catch (_) {
@@ -141,9 +143,10 @@ class _MyPageScreenState extends State<MyPageScreen> {
 
                 _buildWorkoutCalendarCard(workouts),
 
-                const SizedBox(height: 18),
-
-                _buildProCard(),
+                if (!isLoadingProfile && !isPro) ...[
+                  const SizedBox(height: 18),
+                  _buildProCard(),
+                ],
               ],
             );
           },
@@ -985,7 +988,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            '친구 제한 해제, 상세 통계, 같이 운동하기 기능 제공 예정',
+            '친구 제한 해제\n인증 사진 무제한\n운동 기록 분석과 특별 기능 제공',
             style: TextStyle(
               fontSize: 14,
               color: Colors.white,

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/workout_record.dart';
 
@@ -48,6 +49,8 @@ class WorkoutService {
       'endedAt': Timestamp.fromDate(workout.endedAt),
       'durationSeconds': workout.durationSeconds,
       'photoUrl': null,
+      'photoCreatedAt': null,
+      'photoExpiresAt': null,
       'lastWorkoutAt': Timestamp.fromDate(workout.endedAt),
       'strengthSummary': workout.strength == null
           ? null
@@ -74,6 +77,95 @@ class WorkoutService {
     }, SetOptions(merge: true));
     await batch.commit();
     return document.id;
+  }
+
+  Future<String?> updateWorkoutPhoto({
+    required String workoutId,
+    required String photoUrl,
+    required DateTime photoCreatedAt,
+    required DateTime photoExpiresAt,
+  }) async {
+    debugPrint('[WorkoutService][$workoutId] updateWorkoutPhoto 함수 진입');
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'user-not-found',
+        message: '현재 로그인한 사용자가 없습니다.',
+      );
+    }
+
+    final workoutRef = _firestore
+        .collection('users')
+        .doc(user.uid)
+        .collection('workouts')
+        .doc(workoutId);
+    final activityRef = _firestore.collection('publicActivity').doc(user.uid);
+
+    try {
+      debugPrint('[WorkoutService][$workoutId] Firestore transaction 시작');
+      final previousPhotoUrl = await _firestore.runTransaction((
+        transaction,
+      ) async {
+        debugPrint('[WorkoutService][$workoutId] workout 문서 조회 시작');
+        final workoutDocument = await transaction.get(workoutRef);
+        debugPrint(
+          '[WorkoutService][$workoutId] workout 문서 조회 완료: '
+          'exists=${workoutDocument.exists}',
+        );
+        if (!workoutDocument.exists) {
+          throw StateError('운동 기록을 찾을 수 없습니다.');
+        }
+        final workoutData = workoutDocument.data()!;
+        if (workoutData['userId'] != user.uid ||
+            workoutData['status'] != 'completed') {
+          throw StateError('수정할 수 없는 운동 기록입니다.');
+        }
+
+        debugPrint('[WorkoutService][$workoutId] publicActivity 문서 조회 시작');
+        final activityDocument = await transaction.get(activityRef);
+        debugPrint(
+          '[WorkoutService][$workoutId] publicActivity 문서 조회 완료: '
+          'exists=${activityDocument.exists}',
+        );
+        final previousPhotoUrl = workoutData['photoUrl'] is String
+            ? workoutData['photoUrl'] as String
+            : null;
+        transaction.update(workoutRef, {
+          'photoUrl': photoUrl,
+          'photoCreatedAt': Timestamp.fromDate(photoCreatedAt),
+          'photoExpiresAt': Timestamp.fromDate(photoExpiresAt),
+        });
+
+        final workoutEndedAt = workoutData['endedAt'];
+        final activityEndedAt = activityDocument.data()?['endedAt'];
+        if (activityDocument.exists &&
+            workoutEndedAt is Timestamp &&
+            activityEndedAt is Timestamp &&
+            workoutEndedAt.millisecondsSinceEpoch ==
+                activityEndedAt.millisecondsSinceEpoch) {
+          transaction.update(activityRef, {
+            'photoUrl': photoUrl,
+            'photoCreatedAt': Timestamp.fromDate(photoCreatedAt),
+            'photoExpiresAt': Timestamp.fromDate(photoExpiresAt),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+
+        return previousPhotoUrl;
+      });
+      debugPrint('[WorkoutService][$workoutId] Firestore transaction 완료');
+      return previousPhotoUrl;
+    } catch (e, stackTrace) {
+      if (e is FirebaseException) {
+        debugPrint(
+          '[WorkoutService][$workoutId] FirebaseException: '
+          'plugin=${e.plugin}, code=${e.code}, message=${e.message}',
+        );
+      }
+      debugPrint('[WorkoutService][$workoutId] updateWorkoutPhoto 실패: $e');
+      debugPrintStack(stackTrace: stackTrace);
+      rethrow;
+    }
   }
 
   Stream<List<WorkoutRecord>> watchCompletedWorkouts() {
@@ -103,6 +195,38 @@ class WorkoutService {
   Stream<List<WorkoutRecord>> watchTodayWorkouts() {
     final seoulNow = DateTime.now().toUtc().add(const Duration(hours: 9));
     return watchWorkoutsForDate(seoulNow);
+  }
+
+  Future<List<WorkoutRecord>> getTodayWorkouts() async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      return const [];
+    }
+
+    final seoulNow = DateTime.now().toUtc().add(const Duration(hours: 9));
+    final startUtc = DateTime.utc(
+      seoulNow.year,
+      seoulNow.month,
+      seoulNow.day,
+    ).subtract(const Duration(hours: 9));
+    final endUtc = startUtc.add(const Duration(days: 1));
+    final snapshot = await _firestore
+        .collection('users')
+        .doc(user.uid)
+        .collection('workouts')
+        .where('endedAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startUtc))
+        .where('endedAt', isLessThan: Timestamp.fromDate(endUtc))
+        .orderBy('endedAt', descending: true)
+        .get();
+
+    return snapshot.docs
+        .where((document) => document.data()['status'] == 'completed')
+        .map(
+          (document) =>
+              WorkoutRecord.fromFirestore(document.id, document.data()),
+        )
+        .whereType<WorkoutRecord>()
+        .toList();
   }
 
   Stream<List<WorkoutRecord>> watchWorkoutsForDate(DateTime seoulDate) {
