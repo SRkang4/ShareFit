@@ -12,12 +12,14 @@ class WorkoutHistoryCard extends StatefulWidget {
     this.title,
     this.imageFile,
     this.onPhotoPressed,
+    this.onSavePhotoPressed,
   });
 
   final WorkoutRecord workout;
   final String? title;
   final File? imageFile;
   final VoidCallback? onPhotoPressed;
+  final Future<void> Function()? onSavePhotoPressed;
 
   @override
   State<WorkoutHistoryCard> createState() => _WorkoutHistoryCardState();
@@ -26,6 +28,17 @@ class WorkoutHistoryCard extends StatefulWidget {
 class _WorkoutHistoryCardState extends State<WorkoutHistoryCard>
     with SingleTickerProviderStateMixin {
   bool _expanded = false;
+  bool _isSavingPhoto = false;
+
+  Future<void> _savePhoto() async {
+    if (_isSavingPhoto || widget.onSavePhotoPressed == null) return;
+    setState(() => _isSavingPhoto = true);
+    try {
+      await widget.onSavePhotoPressed!();
+    } finally {
+      if (mounted) setState(() => _isSavingPhoto = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -155,6 +168,31 @@ class _WorkoutHistoryCardState extends State<WorkoutHistoryCard>
                         errorBuilder: (context, error, stackTrace) =>
                             const SizedBox.shrink(),
                       ),
+              ),
+            ],
+            if (hasRemotePhoto && widget.onSavePhotoPressed != null) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton.icon(
+                  onPressed: _isSavingPhoto ? null : _savePhoto,
+                  icon: _isSavingPhoto
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2.2),
+                        )
+                      : const Icon(Icons.download_rounded),
+                  label: Text(_isSavingPhoto ? '저장 중' : '사진 저장'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: colors.primary,
+                    side: BorderSide(color: colors.primary, width: 1.3),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                ),
               ),
             ],
             if (widget.onPhotoPressed != null) ...[

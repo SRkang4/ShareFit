@@ -73,6 +73,12 @@ class WorkoutService {
       'dateKey': dateKey,
       'workoutCount': FieldValue.increment(1),
       'durationSeconds': FieldValue.increment(workout.durationSeconds),
+      'strengthVolumeKg': FieldValue.increment(
+        workout.strength?.totalVolumeKg ?? 0,
+      ),
+      'runningDistanceMeters': FieldValue.increment(
+        workout.running?.distanceMeters ?? 0,
+      ),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
     await batch.commit();

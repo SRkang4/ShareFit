@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'profile_customization.dart';
+
 class PublicProfile {
   const PublicProfile({
     required this.uid,
@@ -7,6 +9,7 @@ class PublicProfile {
     required this.friendCode,
     required this.active,
     this.experienceStartDate,
+    this.customization = ProfileCustomization.defaults,
   });
 
   final String uid;
@@ -14,6 +17,7 @@ class PublicProfile {
   final String friendCode;
   final bool active;
   final DateTime? experienceStartDate;
+  final ProfileCustomization customization;
 
   factory PublicProfile.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> document,
@@ -27,6 +31,10 @@ class PublicProfile {
       experienceStartDate: data['experienceStartDate'] is Timestamp
           ? (data['experienceStartDate'] as Timestamp).toDate()
           : null,
+      customization: ProfileCustomization.fromPublicProfile(
+        titleId: data['profileTitleId'],
+        themeId: data['profileThemeId'],
+      ),
     );
   }
 }

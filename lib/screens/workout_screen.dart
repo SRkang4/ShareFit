@@ -13,6 +13,7 @@ import '../services/location_tracking_service.dart';
 import '../services/public_activity_service.dart';
 import '../services/workout_progress_notification_service.dart';
 import '../services/workout_photo_service.dart';
+import '../services/workout_photo_save_service.dart';
 import '../services/workout_service.dart';
 import '../widgets/workout_history_card.dart';
 
@@ -50,6 +51,8 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   final WorkoutProgressNotificationService progressNotificationService =
       WorkoutProgressNotificationService();
   final WorkoutPhotoService workoutPhotoService = WorkoutPhotoService();
+  final WorkoutPhotoSaveService workoutPhotoSaveService =
+      WorkoutPhotoSaveService();
   late final Stream<List<WorkoutRecord>> todayWorkoutsStream;
   late final Future<bool> isProFuture;
   String? justCompletedWorkoutId;
@@ -959,6 +962,28 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     }
   }
 
+  Future<void> _saveWorkoutPhoto(WorkoutRecord workout) async {
+    final workoutId = workout.id;
+    final photoUrl = workout.validPhotoUrl;
+    if (workoutId == null ||
+        photoUrl == null ||
+        workout.userId != workoutService.currentUserId) {
+      return;
+    }
+
+    try {
+      await workoutPhotoSaveService.save(
+        workoutId: workoutId,
+        photoUrl: photoUrl,
+      );
+      if (mounted) _showError('사진을 저장했습니다.');
+    } on WorkoutPhotoSaveException catch (error) {
+      if (mounted) _showError(error.userMessage);
+    } catch (_) {
+      if (mounted) _showError('사진을 저장하지 못했습니다. 다시 시도해주세요.');
+    }
+  }
+
   void resetCurrentWorkout() {
     for (final exercise in exercises) {
       exercise.dispose();
@@ -1385,6 +1410,12 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       workout: workout,
       title: title,
       imageFile: workoutId == null ? null : workoutImages[workoutId],
+      onSavePhotoPressed:
+          workoutId != null &&
+              workout.userId == workoutService.currentUserId &&
+              workout.hasValidPhoto
+          ? () => _saveWorkoutPhoto(workout)
+          : null,
       onPhotoPressed: workoutId == null || !canShowPhotoButton
           ? null
           : () => pickWorkoutImage(workoutId),

@@ -45,6 +45,38 @@ service cloud.firestore {
               resource.data.get('friendCount', 0);
     }
 
+    function validProfileCustomization(customization) {
+      return customization is map &&
+          customization.keys().hasOnly(['titleId', 'themeId']) &&
+          customization.titleId in [
+            'none', 'consistent', 'completedToday', 'strengthLover',
+            'runningLover', 'shareFitPro'
+          ] &&
+          customization.themeId in ['default', 'blue', 'purple', 'dark'];
+    }
+
+    function profileTitleFor(userData) {
+      return 'profileCustomization' in userData
+          ? userData.profileCustomization.titleId
+          : 'none';
+    }
+
+    function profileThemeFor(userData) {
+      return 'profileCustomization' in userData
+          ? userData.profileCustomization.themeId
+          : 'default';
+    }
+
+    function isProfileCustomizationUpdate(uid) {
+      return request.auth.uid == uid &&
+          resource.data.isPro == true &&
+          request.resource.data.isPro == true &&
+          validProfileCustomization(
+              request.resource.data.profileCustomization) &&
+          request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['profileCustomization']);
+    }
+
     function isLegacyFriendCountMigration(uid) {
       return request.auth.uid == uid &&
           !('friendCount' in resource.data) &&
@@ -102,10 +134,15 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid == uid &&
           request.resource.data.uid == uid &&
           request.resource.data.isPro == false &&
-          request.resource.data.friendCount == 0;
+          request.resource.data.friendCount == 0 &&
+          validProfileCustomization(
+              request.resource.data.profileCustomization) &&
+          request.resource.data.profileCustomization.titleId == 'none' &&
+          request.resource.data.profileCustomization.themeId == 'default';
 
       allow update: if signedIn() && (
           isProfileUpdate(uid) ||
+          isProfileCustomizationUpdate(uid) ||
           isLegacyFriendCountMigration(uid) ||
           validAcceptCounterMutation(uid) ||
           validDeleteCounterMutation(uid)
@@ -151,20 +188,36 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid == uid &&
           request.resource.data.keys().hasOnly(
               ['uid', 'name', 'friendCode', 'active',
-               'experienceStartDate', 'updatedAt']) &&
+               'experienceStartDate', 'profileTitleId', 'profileThemeId',
+               'updatedAt']) &&
           request.resource.data.uid == uid &&
           request.resource.data.active == true &&
           request.resource.data.name == getAfter(userPath(uid)).data.name &&
           request.resource.data.friendCode == getAfter(userPath(uid)).data.friendCode &&
           request.resource.data.get('experienceStartDate', null) ==
-              getAfter(userPath(uid)).data.get('experienceStartDate', null);
+              getAfter(userPath(uid)).data.get('experienceStartDate', null) &&
+          request.resource.data.get('profileTitleId', 'none') ==
+              profileTitleFor(getAfter(userPath(uid)).data) &&
+          request.resource.data.get('profileThemeId', 'default') ==
+              profileThemeFor(getAfter(userPath(uid)).data);
 
       allow update: if signedIn() && request.auth.uid == uid &&
-          request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['name', 'experienceStartDate', 'updatedAt']) &&
-          request.resource.data.name == getAfter(userPath(uid)).data.name &&
-          request.resource.data.get('experienceStartDate', null) ==
-              getAfter(userPath(uid)).data.get('experienceStartDate', null);
+          (
+            (request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['name', 'experienceStartDate', 'updatedAt']) &&
+             request.resource.data.name == getAfter(userPath(uid)).data.name &&
+             request.resource.data.get('experienceStartDate', null) ==
+                 getAfter(userPath(uid)).data.get('experienceStartDate', null)) ||
+            (request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['profileTitleId', 'profileThemeId', 'updatedAt']) &&
+             getAfter(userPath(uid)).data.isPro == true &&
+             validProfileCustomization(
+                 getAfter(userPath(uid)).data.profileCustomization) &&
+             request.resource.data.profileTitleId ==
+                 getAfter(userPath(uid)).data.profileCustomization.titleId &&
+             request.resource.data.profileThemeId ==
+                 getAfter(userPath(uid)).data.profileCustomization.themeId)
+          );
 
       allow delete: if signedIn() && request.auth.uid == uid;
     }
@@ -224,7 +277,8 @@ service cloud.firestore {
 
       allow create: if signedIn() && request.auth.uid == uid &&
           request.resource.data.keys().hasOnly([
-            'uid', 'dateKey', 'workoutCount', 'durationSeconds', 'updatedAt'
+            'uid', 'dateKey', 'workoutCount', 'durationSeconds',
+            'strengthVolumeKg', 'runningDistanceMeters', 'updatedAt'
           ]) &&
           request.resource.data.uid == uid &&
           request.resource.data.dateKey == dateKey &&
@@ -233,11 +287,16 @@ service cloud.firestore {
           request.resource.data.workoutCount == 1 &&
           request.resource.data.durationSeconds is int &&
           request.resource.data.durationSeconds >= 0 &&
+          request.resource.data.strengthVolumeKg is number &&
+          request.resource.data.strengthVolumeKg >= 0 &&
+          request.resource.data.runningDistanceMeters is number &&
+          request.resource.data.runningDistanceMeters >= 0 &&
           request.resource.data.updatedAt is timestamp;
 
       allow update: if signedIn() && request.auth.uid == uid &&
           request.resource.data.keys().hasOnly([
-            'uid', 'dateKey', 'workoutCount', 'durationSeconds', 'updatedAt'
+            'uid', 'dateKey', 'workoutCount', 'durationSeconds',
+            'strengthVolumeKg', 'runningDistanceMeters', 'updatedAt'
           ]) &&
           request.resource.data.uid == resource.data.uid &&
           request.resource.data.uid == uid &&
@@ -248,6 +307,12 @@ service cloud.firestore {
           request.resource.data.workoutCount == resource.data.workoutCount + 1 &&
           request.resource.data.durationSeconds is int &&
           request.resource.data.durationSeconds >= resource.data.durationSeconds &&
+          request.resource.data.strengthVolumeKg is number &&
+          request.resource.data.strengthVolumeKg >=
+              resource.data.get('strengthVolumeKg', 0) &&
+          request.resource.data.runningDistanceMeters is number &&
+          request.resource.data.runningDistanceMeters >=
+              resource.data.get('runningDistanceMeters', 0) &&
           request.resource.data.updatedAt is timestamp;
 
       allow delete: if false;

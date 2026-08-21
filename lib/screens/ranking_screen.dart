@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../models/ranking_entry.dart';
+import '../services/auth_service.dart';
 import '../services/ranking_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/competition_ranking.dart';
 
 class RankingScreen extends StatefulWidget {
   const RankingScreen({super.key});
@@ -14,7 +16,17 @@ class RankingScreen extends StatefulWidget {
 class _RankingScreenState extends State<RankingScreen> {
   Color get pointColor => Theme.of(context).colorScheme.primary;
   final RankingService rankingService = RankingService();
+  final AuthService authService = AuthService();
   RankingPeriod selectedPeriod = RankingPeriod.week;
+  late final Future<bool> isProFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    isProFuture = authService.getCurrentUserData().then(
+      (userData) => userData?['isPro'] == true,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,46 +55,92 @@ class _RankingScreenState extends State<RankingScreen> {
             const SizedBox(height: 26),
             _buildPeriodSelector(),
             const SizedBox(height: 28),
-            StreamBuilder<List<RankingEntry>>(
-              key: ValueKey(selectedPeriod),
-              stream: rankingService.watchRankings(selectedPeriod),
-              builder: (context, snapshot) {
-                final entries = snapshot.data ?? const <RankingEntry>[];
-                if (snapshot.connectionState == ConnectionState.waiting &&
-                    entries.isEmpty) {
+            FutureBuilder<bool>(
+              future: isProFuture,
+              builder: (context, proSnapshot) {
+                if (proSnapshot.connectionState != ConnectionState.done) {
                   return const Padding(
                     padding: EdgeInsets.symmetric(vertical: 80),
                     child: Center(child: CircularProgressIndicator()),
                   );
                 }
+                final isPro = proSnapshot.data == true;
+                return StreamBuilder<List<RankingEntry>>(
+                  key: ValueKey(selectedPeriod),
+                  stream: rankingService.watchRankings(selectedPeriod),
+                  builder: (context, snapshot) {
+                    final entries = snapshot.data ?? const <RankingEntry>[];
+                    if (snapshot.connectionState == ConnectionState.waiting &&
+                        entries.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 80),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
 
-                final sortedByDays = [...entries]..sort(_compareWorkoutDays);
-                final sortedByTime = [...entries]..sort(_compareWorkoutTime);
-                final daysRanking = _assignCompetitionRanks(
-                  sortedByDays,
-                  (entry) => entry.workoutDays,
-                );
-                final timeRanking = _assignCompetitionRanks(
-                  sortedByTime,
-                  (entry) => entry.durationSeconds,
-                );
-                return Column(
-                  children: [
-                    _RankingSection(
-                      title: '운동 일수',
-                      rankings: daysRanking,
-                      valueBuilder: (entry) => '${entry.workoutDays}일',
-                      pointColor: pointColor,
-                    ),
-                    const SizedBox(height: 18),
-                    _RankingSection(
-                      title: '운동 시간',
-                      rankings: timeRanking,
-                      valueBuilder: (entry) =>
-                          _formatDuration(entry.durationSeconds),
-                      pointColor: pointColor,
-                    ),
-                  ],
+                    final sortedByDays = [...entries]
+                      ..sort(_compareWorkoutDays);
+                    final sortedByTime = [...entries]
+                      ..sort(_compareWorkoutTime);
+                    final daysRanking = assignCompetitionRanks(
+                      sortedByDays,
+                      (entry) => entry.workoutDays,
+                    );
+                    final timeRanking = assignCompetitionRanks(
+                      sortedByTime,
+                      (entry) => entry.durationSeconds,
+                    );
+                    final sortedByStrengthVolume = isPro
+                        ? ([...entries]..sort(_compareStrengthVolume))
+                        : const <RankingEntry>[];
+                    final sortedByRunningDistance = isPro
+                        ? ([...entries]..sort(_compareRunningDistance))
+                        : const <RankingEntry>[];
+                    final strengthVolumeRanking = assignCompetitionRanks(
+                      sortedByStrengthVolume,
+                      (entry) => entry.strengthVolumeKg,
+                    );
+                    final runningDistanceRanking = assignCompetitionRanks(
+                      sortedByRunningDistance,
+                      (entry) => entry.runningDistanceMeters,
+                    );
+                    return Column(
+                      children: [
+                        _RankingSection(
+                          title: '운동 일수',
+                          rankings: daysRanking,
+                          valueBuilder: (entry) => '${entry.workoutDays}일',
+                          pointColor: pointColor,
+                        ),
+                        const SizedBox(height: 18),
+                        _RankingSection(
+                          title: '운동 시간',
+                          rankings: timeRanking,
+                          valueBuilder: (entry) =>
+                              _formatDuration(entry.durationSeconds),
+                          pointColor: pointColor,
+                        ),
+                        if (isPro) ...[
+                          const SizedBox(height: 18),
+                          _RankingSection(
+                            title: '헬스 총 볼륨',
+                            rankings: strengthVolumeRanking,
+                            valueBuilder: (entry) =>
+                                '${_formatNumber(entry.strengthVolumeKg)}kg',
+                            pointColor: pointColor,
+                          ),
+                          const SizedBox(height: 18),
+                          _RankingSection(
+                            title: '러닝 총 거리',
+                            rankings: runningDistanceRanking,
+                            valueBuilder: (entry) =>
+                                '${_formatDistance(entry.runningDistanceMeters)}km',
+                            pointColor: pointColor,
+                          ),
+                        ],
+                      ],
+                    );
+                  },
                 );
               },
             ),
@@ -110,11 +168,50 @@ class _RankingScreenState extends State<RankingScreen> {
     return name != 0 ? name : first.uid.compareTo(second.uid);
   }
 
+  int _compareStrengthVolume(RankingEntry first, RankingEntry second) {
+    final primary = second.strengthVolumeKg.compareTo(first.strengthVolumeKg);
+    if (primary != 0) return primary;
+    final name = first.name.compareTo(second.name);
+    return name != 0 ? name : first.uid.compareTo(second.uid);
+  }
+
+  int _compareRunningDistance(RankingEntry first, RankingEntry second) {
+    final primary = second.runningDistanceMeters.compareTo(
+      first.runningDistanceMeters,
+    );
+    if (primary != 0) return primary;
+    final name = first.name.compareTo(second.name);
+    return name != 0 ? name : first.uid.compareTo(second.uid);
+  }
+
   String _formatDuration(int seconds) {
     final hours = seconds ~/ 3600;
     final minutes = (seconds % 3600) ~/ 60;
     if (hours == 0) return '$minutes분';
     return '$hours시간 $minutes분';
+  }
+
+  String _formatNumber(double value) {
+    final text = value == value.roundToDouble()
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(1);
+    final parts = text.split('.');
+    final whole = parts.first;
+    final buffer = StringBuffer();
+    for (var index = 0; index < whole.length; index++) {
+      if (index > 0 && (whole.length - index) % 3 == 0) buffer.write(',');
+      buffer.write(whole[index]);
+    }
+    if (parts.length > 1) buffer.write('.${parts[1]}');
+    return buffer.toString();
+  }
+
+  String _formatDistance(double meters) {
+    final kilometers = meters / 1000;
+    final text = kilometers.toStringAsFixed(kilometers < 1 ? 2 : 1);
+    final parts = text.split('.');
+    final whole = _formatNumber(double.parse(parts.first));
+    return '$whole.${parts[1]}';
   }
 
   Widget _buildPeriodSelector() {
@@ -142,34 +239,6 @@ class _RankingScreenState extends State<RankingScreen> {
       ),
     );
   }
-}
-
-class _RankedEntry {
-  const _RankedEntry({required this.entry, required this.rank});
-
-  final RankingEntry entry;
-  final int rank;
-}
-
-List<_RankedEntry> _assignCompetitionRanks(
-  List<RankingEntry> sortedEntries,
-  int Function(RankingEntry entry) valueOf,
-) {
-  final rankedEntries = <_RankedEntry>[];
-  int? previousValue;
-  var currentRank = 0;
-
-  for (var index = 0; index < sortedEntries.length; index++) {
-    final entry = sortedEntries[index];
-    final value = valueOf(entry);
-    if (index == 0 || value != previousValue) {
-      currentRank = index + 1;
-    }
-    rankedEntries.add(_RankedEntry(entry: entry, rank: currentRank));
-    previousValue = value;
-  }
-
-  return rankedEntries;
 }
 
 class _PeriodButton extends StatelessWidget {
@@ -222,7 +291,7 @@ class _RankingSection extends StatelessWidget {
   });
 
   final String title;
-  final List<_RankedEntry> rankings;
+  final List<CompetitionRank<RankingEntry>> rankings;
   final String Function(RankingEntry) valueBuilder;
   final Color pointColor;
 

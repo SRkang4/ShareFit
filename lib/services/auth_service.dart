@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../models/profile_customization.dart';
+
 class AuthService {
   AuthService({
     FirebaseAuth? firebaseAuth,
@@ -86,6 +88,7 @@ class AuthService {
           'friendCode': friendCode,
           'isPro': false,
           'friendCount': 0,
+          'profileCustomization': ProfileCustomization.defaults.toFirestore(),
           'createdAt': FieldValue.serverTimestamp(),
         });
         transaction.set(codeRef, {
@@ -98,6 +101,8 @@ class AuthService {
           'name': name,
           'friendCode': friendCode,
           'active': true,
+          'profileTitleId': ProfileTitleIds.none,
+          'profileThemeId': ProfileThemeIds.defaultTheme,
           'updatedAt': FieldValue.serverTimestamp(),
         });
         return true;

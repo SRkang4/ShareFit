@@ -30,7 +30,16 @@ class RankingService {
     final statsSubscriptions = <StreamSubscription>[];
     PublicProfile? ownProfile;
     var friendProfiles = <PublicProfile>[];
-    final stats = <String, ({int days, int seconds})>{};
+    final stats =
+        <
+          String,
+          ({
+            int days,
+            int seconds,
+            double strengthVolumeKg,
+            double runningDistanceMeters,
+          })
+        >{};
     var statsGeneration = 0;
 
     void emit() {
@@ -46,6 +55,8 @@ class RankingService {
             isCurrentUser: participant.uid == currentUid,
             workoutDays: value?.days ?? 0,
             durationSeconds: value?.seconds ?? 0,
+            strengthVolumeKg: value?.strengthVolumeKg ?? 0,
+            runningDistanceMeters: value?.runningDistanceMeters ?? 0,
           );
         }).toList(),
       );
@@ -75,13 +86,24 @@ class RankingService {
               if (generation != statsGeneration) return;
               var days = 0;
               var seconds = 0;
+              var strengthVolumeKg = 0.0;
+              var runningDistanceMeters = 0.0;
               for (final document in snapshot.docs) {
                 final data = document.data();
                 final count = (data['workoutCount'] as num?)?.toInt() ?? 0;
                 if (count > 0) days++;
                 seconds += (data['durationSeconds'] as num?)?.toInt() ?? 0;
+                strengthVolumeKg +=
+                    (data['strengthVolumeKg'] as num?)?.toDouble() ?? 0;
+                runningDistanceMeters +=
+                    (data['runningDistanceMeters'] as num?)?.toDouble() ?? 0;
               }
-              stats[participant.uid] = (days: days, seconds: seconds);
+              stats[participant.uid] = (
+                days: days,
+                seconds: seconds,
+                strengthVolumeKg: strengthVolumeKg,
+                runningDistanceMeters: runningDistanceMeters,
+              );
               emit();
             }, onError: controller.addError);
         statsSubscriptions.add(subscription);

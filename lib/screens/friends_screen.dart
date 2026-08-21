@@ -4,8 +4,10 @@ import 'package:top_snackbar_flutter/top_snack_bar.dart';
 
 import '../models/friend.dart';
 import '../models/friend_request.dart';
+import '../models/profile_customization.dart';
 import '../services/auth_service.dart';
 import '../services/friend_service.dart';
+import '../theme/profile_card_theme.dart';
 import '../utils/experience_formatter.dart';
 
 class FriendsScreen extends StatefulWidget {
@@ -575,6 +577,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
               career: formatWorkoutExperience(
                 friend.profile.experienceStartDate,
               ),
+              customization: friend.profile.customization,
             ),
             isProcessing: _processingIds.contains('friend:${friend.uid}'),
             onDelete: () => _confirmRemoveFriend(friend),
@@ -899,6 +902,7 @@ class _FriendCard extends StatelessWidget {
     return _BaseUserCard(
       name: friend.displayName,
       career: friend.career,
+      customization: friend.customization,
       trailing: TextButton(
         onPressed: isProcessing ? null : onDelete,
         child: isProcessing
@@ -1012,29 +1016,33 @@ class _BaseUserCard extends StatelessWidget {
   final String name;
   final String career;
   final Widget trailing;
+  final ProfileCustomization customization;
 
   const _BaseUserCard({
     required this.name,
     required this.career,
     required this.trailing,
+    this.customization = ProfileCustomization.defaults,
   });
 
   @override
   Widget build(BuildContext context) {
+    final palette = ProfileCardPalette.resolve(context, customization.themeId);
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainer,
+        color: palette.background,
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: palette.border),
       ),
       child: Row(
         children: [
           CircleAvatar(
             radius: 26,
-            backgroundColor: Theme.of(context).colorScheme.primary,
+            backgroundColor: palette.accent,
             child: Text(
-              name.substring(0, 1),
+              name.isEmpty ? '?' : name.substring(0, 1),
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w900,
@@ -1049,17 +1057,30 @@ class _BaseUserCard extends StatelessWidget {
               children: [
                 Text(
                   name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w900,
+                    color: palette.foreground,
                   ),
                 ),
+                if (customization.titleLabel != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    customization.titleLabel!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: palette.accent,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 5),
                 Text(
                   career,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
+                    color: palette.secondaryForeground,
                   ),
                 ),
               ],
@@ -1075,8 +1096,13 @@ class _BaseUserCard extends StatelessWidget {
 class FriendData {
   final String displayName;
   final String career;
+  final ProfileCustomization customization;
 
-  FriendData({required this.displayName, required this.career});
+  FriendData({
+    required this.displayName,
+    required this.career,
+    required this.customization,
+  });
 }
 
 class FriendRequestData {
