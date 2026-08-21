@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../models/friend.dart';
 import '../models/public_activity.dart';
+import '../models/public_workout_activity.dart';
 import '../services/friend_service.dart';
 import '../services/public_activity_service.dart';
+import '../services/public_workout_activity_service.dart';
 import '../theme/app_theme.dart';
+import '../theme/profile_card_theme.dart';
 import '../widgets/section_title.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -19,17 +22,23 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final FriendService _friendService = FriendService();
   final PublicActivityService _activityService = PublicActivityService();
+  final PublicWorkoutActivityService _publicWorkoutActivityService =
+      PublicWorkoutActivityService();
   final Map<String, PublicActivity> _activities = {};
+  final Map<String, List<PublicWorkoutActivity>> _publicWorkouts = {};
   final Map<String, StreamSubscription<PublicActivity>> _activitySubscriptions =
       {};
-  final Set<String> _expandedFriendIds = {};
+  final Map<String, StreamSubscription<List<PublicWorkoutActivity>>>
+  _publicWorkoutSubscriptions = {};
   StreamSubscription<List<Friend>>? _friendsSubscription;
   Timer? _clock;
   List<Friend> _friends = const [];
+  late String _todayDateKey;
 
   @override
   void initState() {
     super.initState();
+    _todayDateKey = PublicWorkoutActivityService.seoulDateKey(DateTime.now());
     _friendsSubscription = _friendService.watchFriends().listen(
       _handleFriends,
       onError: (_) {
@@ -37,12 +46,22 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
     _clock = Timer.periodic(const Duration(minutes: 1), (_) {
+      final currentDateKey = PublicWorkoutActivityService.seoulDateKey(
+        DateTime.now(),
+      );
+      if (currentDateKey != _todayDateKey) {
+        _todayDateKey = currentDateKey;
+        _restartPublicWorkoutSubscriptions();
+        return;
+      }
       if (mounted &&
           (_friends.any(
                 (friend) => _activities[friend.uid]?.status == 'workingOut',
               ) ||
-              _activities.values.any(
-                (activity) => activity.photoUrl != null,
+              _activities.values.any((activity) => activity.photoUrl != null) ||
+              _publicWorkouts.values.any(
+                (workouts) =>
+                    workouts.any((workout) => workout.photoUrl != null),
               ))) {
         setState(() {});
       }
@@ -54,8 +73,9 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final uid in _activitySubscriptions.keys.toList()) {
       if (!ids.contains(uid)) {
         _activitySubscriptions.remove(uid)?.cancel();
+        _publicWorkoutSubscriptions.remove(uid)?.cancel();
         _activities.remove(uid);
-        _expandedFriendIds.remove(uid);
+        _publicWorkouts.remove(uid);
       }
     }
     for (final friend in friends) {
@@ -72,8 +92,37 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
       );
+      _subscribeToPublicWorkouts(friend.uid);
     }
     if (mounted) setState(() => _friends = friends);
+  }
+
+  void _subscribeToPublicWorkouts(String uid) {
+    _publicWorkoutSubscriptions.putIfAbsent(
+      uid,
+      () => _publicWorkoutActivityService
+          .watchToday(uid)
+          .listen(
+            (workouts) {
+              if (mounted) setState(() => _publicWorkouts[uid] = workouts);
+            },
+            onError: (_) {
+              if (mounted) setState(() => _publicWorkouts.remove(uid));
+            },
+          ),
+    );
+  }
+
+  void _restartPublicWorkoutSubscriptions() {
+    for (final subscription in _publicWorkoutSubscriptions.values) {
+      subscription.cancel();
+    }
+    _publicWorkoutSubscriptions.clear();
+    _publicWorkouts.clear();
+    for (final friend in _friends) {
+      _subscribeToPublicWorkouts(friend.uid);
+    }
+    if (mounted) setState(() {});
   }
 
   @override
@@ -83,7 +132,20 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final subscription in _activitySubscriptions.values) {
       subscription.cancel();
     }
+    for (final subscription in _publicWorkoutSubscriptions.values) {
+      subscription.cancel();
+    }
     super.dispose();
+  }
+
+  List<PublicWorkoutActivity> _todayWorkoutsFor(Friend friend) {
+    final publicWorkouts = _publicWorkouts[friend.uid] ?? const [];
+    if (publicWorkouts.isNotEmpty) return publicWorkouts;
+    final activity = _activities[friend.uid];
+    if (_isToday(activity?.endedAt)) {
+      return [PublicWorkoutActivity.fromLegacy(activity!)];
+    }
+    return const [];
   }
 
   bool _isToday(DateTime? value) {
@@ -104,7 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final activity = _activities[friend.uid];
       if (activity?.status == 'workingOut' && activity?.startedAt != null) {
         working.add(friend);
-      } else if (_isToday(activity?.endedAt)) {
+      } else if (_todayWorkoutsFor(friend).isNotEmpty) {
         completed.add(friend);
       } else {
         resting.add(friend);
@@ -146,17 +208,10 @@ class _HomeScreenState extends State<HomeScreen> {
             if (completed.isEmpty)
               const _EmptyHomeCard(message: '운동 완료한 친구가 없어요.'),
             ...completed.map((friend) {
-              final expanded = _expandedFriendIds.contains(friend.uid);
               return _CompletedWorkoutCard(
                 key: ValueKey(friend.uid),
                 friend: friend,
-                activity: _activities[friend.uid]!,
-                expanded: expanded,
-                onToggle: () => setState(() {
-                  expanded
-                      ? _expandedFriendIds.remove(friend.uid)
-                      : _expandedFriendIds.add(friend.uid);
-                }),
+                workouts: _todayWorkoutsFor(friend),
               );
             }),
             const SizedBox(height: 30),
@@ -203,6 +258,7 @@ class _WorkingOutCard extends StatelessWidget {
         : '$elapsed분째';
     final type = activity.workoutType == 'running' ? '러닝' : '근력 운동';
     return _BaseCard(
+      friend: friend,
       child: Row(
         children: [
           const _DefaultProfile(),
@@ -211,7 +267,7 @@ class _WorkingOutCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(friend.profile.name, style: _nameStyle),
+                _FriendIdentity(friend: friend),
                 const SizedBox(height: 5),
                 Text('$type · $time', style: _subStyle),
               ],
@@ -224,103 +280,141 @@ class _WorkingOutCard extends StatelessWidget {
   }
 }
 
-class _CompletedWorkoutCard extends StatelessWidget {
+class _CompletedWorkoutCard extends StatefulWidget {
   const _CompletedWorkoutCard({
     super.key,
     required this.friend,
-    required this.activity,
-    required this.expanded,
-    required this.onToggle,
+    required this.workouts,
   });
   final Friend friend;
-  final PublicActivity activity;
-  final bool expanded;
-  final VoidCallback onToggle;
+  final List<PublicWorkoutActivity> workouts;
+
+  @override
+  State<_CompletedWorkoutCard> createState() => _CompletedWorkoutCardState();
+}
+
+class _CompletedWorkoutCardState extends State<_CompletedWorkoutCard> {
+  final PageController _pageController = PageController();
+  int _page = 0;
+
+  @override
+  void didUpdateWidget(covariant _CompletedWorkoutCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_page >= widget.workouts.length) {
+      _page = 0;
+      if (_pageController.hasClients) _pageController.jumpToPage(0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final strength = activity.strengthSummary;
-    final running = activity.runningSummary;
-    final photoUrl = activity.validPhotoUrl;
-    final isRunning = activity.workoutType == 'running';
+    final hasPhoto = widget.workouts.any(
+      (workout) => workout.validPhotoUrl != null,
+    );
+    final pageHeight = hasPhoto ? 286.0 : 120.0;
+    return _BaseCard(
+      friend: widget.friend,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const _DefaultProfile(),
+              const SizedBox(width: 16),
+              Expanded(child: _FriendIdentity(friend: widget.friend)),
+              _pill(
+                '오늘 ${widget.workouts.length}회',
+                Theme.of(context).colorScheme.primary,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Divider(height: 1, color: Theme.of(context).colorScheme.outline),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: pageHeight,
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: widget.workouts.length,
+              onPageChanged: (value) => setState(() => _page = value),
+              itemBuilder: (context, index) => _CompletedWorkoutPage(
+                key: ValueKey(widget.workouts[index].workoutId),
+                workout: widget.workouts[index],
+              ),
+            ),
+          ),
+          if (widget.workouts.length > 1) ...[
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(
+                widget.workouts.length,
+                (index) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: index == _page ? 8 : 6,
+                  height: index == _page ? 8 : 6,
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  decoration: BoxDecoration(
+                    color: index == _page
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.outline,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CompletedWorkoutPage extends StatelessWidget {
+  const _CompletedWorkoutPage({super.key, required this.workout});
+
+  final PublicWorkoutActivity workout;
+
+  @override
+  Widget build(BuildContext context) {
+    final strength = workout.strengthSummary;
+    final running = workout.runningSummary;
+    final photoUrl = workout.validPhotoUrl;
+    final isRunning = workout.type == 'running';
     final title = isRunning
         ? '러닝'
         : (strength?.bodyParts.isNotEmpty == true
               ? strength!.bodyParts.join(', ')
               : '근력 운동');
-    return _BaseCard(
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeInOut,
-        alignment: Alignment.topCenter,
-        child: Column(
-          children: [
-            Row(
-              children: [
-                const _DefaultProfile(),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(friend.profile.name, style: _nameStyle),
-                      const SizedBox(height: 5),
-                      Text(
-                        '$title · ${_duration(activity.durationSeconds ?? 0)}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                if (photoUrl != null) _Photo(url: photoUrl),
-                SizedBox(
-                  width: 44,
-                  height: 44,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
-                    tooltip: expanded ? '운동 정보 접기' : '운동 정보 펼치기',
-                    onPressed: onToggle,
-                    icon: Icon(
-                      expanded
-                          ? Icons.keyboard_arrow_up_rounded
-                          : Icons.keyboard_arrow_down_rounded,
-                      color: Theme.of(context).colorScheme.primary,
-                      size: 28,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            if (expanded) ...[
-              const SizedBox(height: 18),
-              const Divider(height: 1, color: Color(0xFFE0E0E0)),
-              const SizedBox(height: 16),
-              if (!isRunning) ...[
-                _detail('운동 부위', strength?.bodyParts.join(', ') ?? '-'),
-                _detail('운동 시간', _duration(activity.durationSeconds ?? 0)),
-                _detail('완료 세트', '${strength?.completedSetCount ?? 0}세트'),
-                _detail('총 볼륨', '${_number(strength?.totalVolumeKg ?? 0)}kg'),
-              ] else ...[
-                _detail('운동 시간', _duration(activity.durationSeconds ?? 0)),
-                _detail(
-                  '거리',
-                  '${((running?.distanceMeters ?? 0) / 1000).toStringAsFixed(2)}km',
-                ),
-                _detail('평균 페이스', _pace(running?.averagePaceSecondsPerKm)),
-              ],
-              if (photoUrl != null) ...[
-                const SizedBox(height: 12),
-                _Photo(url: photoUrl, large: true),
-              ],
-            ],
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '$title · ${_duration(workout.durationSeconds)}',
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
         ),
-      ),
+        const SizedBox(height: 10),
+        if (isRunning) ...[
+          _detail(
+            '거리',
+            '${((running?.distanceMeters ?? 0) / 1000).toStringAsFixed(2)}km',
+          ),
+          _detail('평균 페이스', _pace(running?.averagePaceSecondsPerKm)),
+        ] else ...[
+          _detail('완료 세트', '${strength?.completedSetCount ?? 0}세트'),
+          _detail('총 볼륨', '${_number(strength?.totalVolumeKg ?? 0)}kg'),
+        ],
+        if (photoUrl != null) ...[
+          const SizedBox(height: 8),
+          _Photo(url: photoUrl, large: true),
+        ],
+      ],
     );
   }
 }
@@ -331,6 +425,7 @@ class _RestingFriendCard extends StatelessWidget {
   final PublicActivity? activity;
   @override
   Widget build(BuildContext context) => _BaseCard(
+    friend: friend,
     child: Row(
       children: [
         const _DefaultProfile(),
@@ -339,7 +434,7 @@ class _RestingFriendCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(friend.profile.name, style: _nameStyle),
+              _FriendIdentity(friend: friend),
               const SizedBox(height: 5),
               Text(_lastWorkout(activity?.lastWorkoutAt), style: _subStyle),
             ],
@@ -367,18 +462,54 @@ class _RestingFriendCard extends StatelessWidget {
 }
 
 class _BaseCard extends StatelessWidget {
-  const _BaseCard({required this.child});
+  const _BaseCard({required this.friend, required this.child});
+  final Friend friend;
   final Widget child;
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 14),
-    padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainer,
-      borderRadius: BorderRadius.circular(24),
-    ),
-    child: child,
-  );
+  Widget build(BuildContext context) {
+    final profilePalette = ProfileCardPalette.resolve(
+      context,
+      friend.profile.customization.themeId,
+    );
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: profilePalette.border),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _FriendIdentity extends StatelessWidget {
+  const _FriendIdentity({required this.friend});
+
+  final Friend friend;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = friend.profile.customization.titleLabel;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(friend.profile.name, style: _nameStyle),
+        if (title != null) ...[
+          const SizedBox(height: 3),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 }
 
 class _Photo extends StatelessWidget {

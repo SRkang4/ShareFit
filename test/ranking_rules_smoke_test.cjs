@@ -116,12 +116,12 @@ async function main() {
     proBatch.update(proUser.doc('users/pro-user'), {
       profileCustomization: {
         titleId: 'runningLover',
-        themeId: 'purple',
+        themeId: 'mint',
       },
     });
     proBatch.update(proUser.doc('publicProfiles/pro-user'), {
       profileTitleId: 'runningLover',
-      profileThemeId: 'purple',
+      profileThemeId: 'mint',
       updatedAt: Timestamp.now(),
     });
     await assertSucceeds(proBatch.commit());
@@ -133,12 +133,12 @@ async function main() {
     freeBatch.update(freeUser.doc('users/free-user'), {
       profileCustomization: {
         titleId: 'consistent',
-        themeId: 'blue',
+        themeId: 'pink',
       },
     });
     freeBatch.update(freeUser.doc('publicProfiles/free-user'), {
       profileTitleId: 'consistent',
-      profileThemeId: 'blue',
+      profileThemeId: 'pink',
       updatedAt: Timestamp.now(),
     });
     await assertFails(freeBatch.commit());
@@ -146,7 +146,44 @@ async function main() {
     await assertFails(
       proUser.doc('publicProfiles/pro-user').update({
         profileTitleId: 'shareFitPro',
-        profileThemeId: 'dark',
+        profileThemeId: 'yellow',
+        updatedAt: Timestamp.now(),
+      }),
+    );
+
+    const publicWorkoutPath =
+      'publicWorkoutActivities/owner/days/2026-08-14/workouts/workout-1';
+    const publicWorkout = {
+      uid: 'owner',
+      workoutId: 'workout-1',
+      dateKey: '2026-08-14',
+      type: 'strength',
+      startedAt: Timestamp.now(),
+      endedAt: Timestamp.now(),
+      durationSeconds: 1200,
+      photoUrl: null,
+      photoCreatedAt: null,
+      photoExpiresAt: null,
+      strengthSummary: {
+        bodyParts: ['가슴'],
+        completedSetCount: 3,
+        totalVolumeKg: 2400,
+      },
+      runningSummary: null,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    };
+    await assertSucceeds(owner.doc(publicWorkoutPath).set(publicWorkout));
+    await assertSucceeds(friend.doc(publicWorkoutPath).get());
+    await assertFails(stranger.doc(publicWorkoutPath).get());
+    await assertFails(
+      friend.doc(publicWorkoutPath).update({ photoUrl: 'https://bad.example' }),
+    );
+    await assertSucceeds(
+      owner.doc(publicWorkoutPath).update({
+        photoUrl: 'https://example.com/photo.jpg',
+        photoCreatedAt: Timestamp.now(),
+        photoExpiresAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       }),
     );

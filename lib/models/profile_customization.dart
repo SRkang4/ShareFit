@@ -69,15 +69,15 @@ class ProfileTitleIds {
 
 class ProfileThemeIds {
   static const defaultTheme = 'default';
-  static const blue = 'blue';
-  static const purple = 'purple';
-  static const dark = 'dark';
+  static const pink = 'pink';
+  static const yellow = 'yellow';
+  static const mint = 'mint';
 
   static const labels = <String, String>{
     defaultTheme: '기본',
-    blue: '블루',
-    purple: '퍼플',
-    dark: '다크',
+    pink: '핑크',
+    yellow: '옐로',
+    mint: '민트',
   };
 
   static bool isValid(String id) => labels.containsKey(id);

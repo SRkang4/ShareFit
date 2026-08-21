@@ -52,7 +52,7 @@ service cloud.firestore {
             'none', 'consistent', 'completedToday', 'strengthLover',
             'runningLover', 'shareFitPro'
           ] &&
-          customization.themeId in ['default', 'blue', 'purple', 'dark'];
+          customization.themeId in ['default', 'pink', 'yellow', 'mint'];
     }
 
     function profileTitleFor(userData) {
@@ -75,6 +75,56 @@ service cloud.firestore {
               request.resource.data.profileCustomization) &&
           request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['profileCustomization']);
+    }
+
+    function validPublicStrengthSummary(summary) {
+      return summary == null ||
+          (summary is map &&
+           summary.keys().hasOnly(
+               ['bodyParts', 'completedSetCount', 'totalVolumeKg']) &&
+           summary.bodyParts is list &&
+           summary.completedSetCount is int &&
+           summary.completedSetCount >= 0 &&
+           summary.totalVolumeKg is number &&
+           summary.totalVolumeKg >= 0);
+    }
+
+    function validPublicRunningSummary(summary) {
+      return summary == null ||
+          (summary is map &&
+           summary.keys().hasOnly(
+               ['distanceMeters', 'averagePaceSecondsPerKm']) &&
+           summary.distanceMeters is number &&
+           summary.distanceMeters >= 0 &&
+           (summary.averagePaceSecondsPerKm == null ||
+            summary.averagePaceSecondsPerKm is number));
+    }
+
+    function validPublicWorkout(uid, dateKey, workoutId, data) {
+      return data.keys().hasOnly([
+            'uid', 'workoutId', 'dateKey', 'type', 'startedAt', 'endedAt',
+            'durationSeconds', 'photoUrl', 'photoCreatedAt', 'photoExpiresAt',
+            'strengthSummary', 'runningSummary', 'createdAt', 'updatedAt'
+          ]) &&
+          data.uid == uid &&
+          data.workoutId == workoutId &&
+          data.dateKey == dateKey &&
+          dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+          data.type in ['strength', 'running'] &&
+          data.startedAt is timestamp &&
+          data.endedAt is timestamp &&
+          data.durationSeconds is int &&
+          data.durationSeconds >= 0 &&
+          (data.photoUrl == null || data.photoUrl is string) &&
+          (data.photoCreatedAt == null || data.photoCreatedAt is timestamp) &&
+          (data.photoExpiresAt == null || data.photoExpiresAt is timestamp) &&
+          validPublicStrengthSummary(data.strengthSummary) &&
+          validPublicRunningSummary(data.runningSummary) &&
+          (data.type == 'strength'
+              ? data.strengthSummary != null && data.runningSummary == null
+              : data.runningSummary != null && data.strengthSummary == null) &&
+          data.createdAt is timestamp &&
+          data.updatedAt is timestamp;
     }
 
     function isLegacyFriendCountMigration(uid) {
@@ -266,6 +316,25 @@ service cloud.firestore {
            request.resource.data.photoExpiresAt is timestamp) &&
           (request.resource.data.get('lastWorkoutAt', null) == null ||
            request.resource.data.lastWorkoutAt is timestamp);
+
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /publicWorkoutActivities/{uid}/days/{dateKey}/workouts/{workoutId} {
+      allow read: if signedIn() &&
+          (request.auth.uid == uid ||
+           exists(friendPath(request.auth.uid, uid)));
+
+      allow create: if signedIn() && request.auth.uid == uid &&
+          validPublicWorkout(
+              uid, dateKey, workoutId, request.resource.data);
+
+      allow update: if signedIn() && request.auth.uid == uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'photoUrl', 'photoCreatedAt', 'photoExpiresAt', 'updatedAt'
+          ]) &&
+          validPublicWorkout(
+              uid, dateKey, workoutId, request.resource.data);
 
       allow delete: if signedIn() && request.auth.uid == uid;
     }

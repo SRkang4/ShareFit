@@ -21,41 +21,47 @@ class ProfileCardPalette {
     final colors = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     switch (themeId) {
-      case ProfileThemeIds.blue:
+      case ProfileThemeIds.pink:
         return ProfileCardPalette(
           background: isDark
-              ? const Color(0xFF1C2948)
-              : const Color(0xFFE9EFFF),
+              ? const Color(0xFF3A2730)
+              : const Color(0xFFFCECF2),
           foreground: isDark
-              ? const Color(0xFFF6F8FF)
-              : const Color(0xFF17213B),
+              ? const Color(0xFFFFF7FA)
+              : const Color(0xFF3B202A),
           secondaryForeground: isDark
-              ? const Color(0xFFD4DCF2)
-              : const Color(0xFF46516D),
-          accent: const Color(0xFF5267E8),
-          border: const Color(0xFF5267E8),
+              ? const Color(0xFFE3C9D3)
+              : const Color(0xFF6F4B59),
+          accent: isDark ? const Color(0xFFE8A2B8) : const Color(0xFFD8799A),
+          border: isDark ? const Color(0xFF7B5261) : const Color(0xFFE7A9BC),
         );
-      case ProfileThemeIds.purple:
+      case ProfileThemeIds.yellow:
         return ProfileCardPalette(
           background: isDark
-              ? const Color(0xFF302443)
-              : const Color(0xFFF1EAFE),
+              ? const Color(0xFF3A3424)
+              : const Color(0xFFFFF7D9),
           foreground: isDark
-              ? const Color(0xFFFBF8FF)
-              : const Color(0xFF2B1D3B),
+              ? const Color(0xFFFFF9E8)
+              : const Color(0xFF3A321B),
           secondaryForeground: isDark
-              ? const Color(0xFFDFD3EE)
-              : const Color(0xFF5E4B70),
-          accent: const Color(0xFF7656C9),
-          border: const Color(0xFF7656C9),
+              ? const Color(0xFFDDD2B3)
+              : const Color(0xFF6B6040),
+          accent: isDark ? const Color(0xFFE3C36D) : const Color(0xFFD3A93D),
+          border: isDark ? const Color(0xFF746543) : const Color(0xFFE7CD7B),
         );
-      case ProfileThemeIds.dark:
-        return const ProfileCardPalette(
-          background: Color(0xFF252931),
-          foreground: Color(0xFFF7F7F8),
-          secondaryForeground: Color(0xFFD0D2D6),
-          accent: Color(0xFF8D9AF0),
-          border: Color(0xFF4D535E),
+      case ProfileThemeIds.mint:
+        return ProfileCardPalette(
+          background: isDark
+              ? const Color(0xFF243630)
+              : const Color(0xFFE8F5EF),
+          foreground: isDark
+              ? const Color(0xFFF4FFF9)
+              : const Color(0xFF20372F),
+          secondaryForeground: isDark
+              ? const Color(0xFFC5DBD1)
+              : const Color(0xFF4C695E),
+          accent: isDark ? const Color(0xFF83C6AA) : const Color(0xFF72B89D),
+          border: isDark ? const Color(0xFF4E7565) : const Color(0xFFA7D7C4),
         );
       default:
         return ProfileCardPalette(

@@ -613,7 +613,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton.icon(
+              child: OutlinedButton(
                 onPressed: _showProfileCustomizationDialog,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: palette.foreground,
@@ -622,8 +622,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                icon: Icon(Icons.auto_awesome_rounded, color: palette.accent),
-                label: const Text(
+                child: const Text(
                   '프로필 꾸미기',
                   style: TextStyle(fontWeight: FontWeight.w800),
                 ),

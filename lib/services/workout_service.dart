@@ -39,8 +39,47 @@ class WorkoutService {
         .doc(user.uid)
         .collection('days')
         .doc(dateKey);
+    final publicWorkout = _firestore
+        .collection('publicWorkoutActivities')
+        .doc(user.uid)
+        .collection('days')
+        .doc(dateKey)
+        .collection('workouts')
+        .doc(document.id);
     final batch = _firestore.batch();
     batch.set(document, workout.toFirestore());
+    batch.set(publicWorkout, {
+      'uid': user.uid,
+      'workoutId': document.id,
+      'dateKey': dateKey,
+      'type': workout.type,
+      'startedAt': Timestamp.fromDate(workout.startedAt),
+      'endedAt': Timestamp.fromDate(workout.endedAt),
+      'durationSeconds': workout.durationSeconds,
+      'photoUrl': workout.photoUrl,
+      'photoCreatedAt': workout.photoCreatedAt == null
+          ? null
+          : Timestamp.fromDate(workout.photoCreatedAt!),
+      'photoExpiresAt': workout.photoExpiresAt == null
+          ? null
+          : Timestamp.fromDate(workout.photoExpiresAt!),
+      'strengthSummary': workout.strength == null
+          ? null
+          : {
+              'bodyParts': workout.strength!.bodyParts,
+              'completedSetCount': workout.strength!.completedSetCount,
+              'totalVolumeKg': workout.strength!.totalVolumeKg,
+            },
+      'runningSummary': workout.running == null
+          ? null
+          : {
+              'distanceMeters': workout.running!.distanceMeters,
+              'averagePaceSecondsPerKm':
+                  workout.running!.averagePaceSecondsPerKm,
+            },
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
     batch.set(activity, {
       'uid': user.uid,
       'status': 'completed',
@@ -136,13 +175,32 @@ class WorkoutService {
         final previousPhotoUrl = workoutData['photoUrl'] is String
             ? workoutData['photoUrl'] as String
             : null;
+        final workoutEndedAt = workoutData['endedAt'];
+        DocumentReference<Map<String, dynamic>>? publicWorkoutRef;
+        DocumentSnapshot<Map<String, dynamic>>? publicWorkoutDocument;
+        if (workoutEndedAt is Timestamp) {
+          final seoulEndedAt = workoutEndedAt.toDate().toUtc().add(
+            const Duration(hours: 9),
+          );
+          final dateKey =
+              '${seoulEndedAt.year.toString().padLeft(4, '0')}-'
+              '${seoulEndedAt.month.toString().padLeft(2, '0')}-'
+              '${seoulEndedAt.day.toString().padLeft(2, '0')}';
+          publicWorkoutRef = _firestore
+              .collection('publicWorkoutActivities')
+              .doc(user.uid)
+              .collection('days')
+              .doc(dateKey)
+              .collection('workouts')
+              .doc(workoutId);
+          publicWorkoutDocument = await transaction.get(publicWorkoutRef);
+        }
         transaction.update(workoutRef, {
           'photoUrl': photoUrl,
           'photoCreatedAt': Timestamp.fromDate(photoCreatedAt),
           'photoExpiresAt': Timestamp.fromDate(photoExpiresAt),
         });
 
-        final workoutEndedAt = workoutData['endedAt'];
         final activityEndedAt = activityDocument.data()?['endedAt'];
         if (activityDocument.exists &&
             workoutEndedAt is Timestamp &&
@@ -150,6 +208,14 @@ class WorkoutService {
             workoutEndedAt.millisecondsSinceEpoch ==
                 activityEndedAt.millisecondsSinceEpoch) {
           transaction.update(activityRef, {
+            'photoUrl': photoUrl,
+            'photoCreatedAt': Timestamp.fromDate(photoCreatedAt),
+            'photoExpiresAt': Timestamp.fromDate(photoExpiresAt),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+        if (publicWorkoutDocument?.exists == true && publicWorkoutRef != null) {
+          transaction.update(publicWorkoutRef, {
             'photoUrl': photoUrl,
             'photoCreatedAt': Timestamp.fromDate(photoCreatedAt),
             'photoExpiresAt': Timestamp.fromDate(photoExpiresAt),

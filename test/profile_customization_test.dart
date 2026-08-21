@@ -13,11 +13,21 @@ void main() {
   test('restores valid title and profile theme IDs', () {
     final customization = ProfileCustomization.fromMap({
       'titleId': ProfileTitleIds.runningLover,
-      'themeId': ProfileThemeIds.purple,
+      'themeId': ProfileThemeIds.mint,
     });
 
     expect(customization.titleLabel, '러닝 러버');
-    expect(customization.themeId, ProfileThemeIds.purple);
+    expect(customization.themeId, ProfileThemeIds.mint);
+  });
+
+  test('falls back legacy profile themes to default', () {
+    for (final legacyTheme in ['blue', 'purple', 'dark']) {
+      final customization = ProfileCustomization.fromMap({
+        'titleId': ProfileTitleIds.consistent,
+        'themeId': legacyTheme,
+      });
+      expect(customization.themeId, ProfileThemeIds.defaultTheme);
+    }
   });
 
   test('title none has no visible label', () {
