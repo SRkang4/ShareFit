@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../navigation/app_navigation_controller.dart';
 import '../services/friend_service.dart';
 import 'friends_screen.dart';
 import 'home_screen.dart';
@@ -17,6 +18,27 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int selectedIndex = 0;
   final FriendService _friendService = FriendService();
+
+  @override
+  void initState() {
+    super.initState();
+    AppNavigationController.instance.addListener(_handleNavigationRequest);
+    selectedIndex =
+        AppNavigationController.instance.takeRequestedMainTab() ?? 0;
+  }
+
+  void _handleNavigationRequest() {
+    final requested = AppNavigationController.instance.takeRequestedMainTab();
+    if (requested != null && mounted && requested != selectedIndex) {
+      setState(() => selectedIndex = requested);
+    }
+  }
+
+  @override
+  void dispose() {
+    AppNavigationController.instance.removeListener(_handleNavigationRequest);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

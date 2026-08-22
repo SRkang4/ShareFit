@@ -86,6 +86,41 @@ async function main() {
       updatedAt: Timestamp.now(),
     };
 
+    const tokenPath = 'users/owner/fcmTokens/token-hash';
+    await assertSucceeds(
+      owner.doc(tokenPath).set({
+        token: 'valid-fcm-token',
+        platform: 'android',
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      }),
+    );
+    await assertSucceeds(owner.doc(tokenPath).get());
+    await assertFails(stranger.doc(tokenPath).get());
+    await assertFails(
+      stranger.doc('users/owner/fcmTokens/attacker').set({
+        token: 'attacker-token',
+        platform: 'android',
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      }),
+    );
+    await assertFails(
+      owner.doc('users/owner/fcmTokens/invalid').set({
+        token: '',
+        platform: 'unknown',
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      }),
+    );
+    await assertFails(
+      owner.doc('notificationCooldowns/owner/targets/friend').set({
+        senderUid: 'owner',
+        targetUid: 'friend',
+        lastSentAt: Timestamp.now(),
+      }),
+    );
+
     await assertSucceeds(owner.doc(path).set(valid));
     await assertSucceeds(friend.doc(path).get());
     await assertFails(stranger.doc(path).get());

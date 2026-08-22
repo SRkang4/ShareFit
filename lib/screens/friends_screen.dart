@@ -5,6 +5,7 @@ import 'package:top_snackbar_flutter/top_snack_bar.dart';
 import '../models/friend.dart';
 import '../models/friend_request.dart';
 import '../models/profile_customization.dart';
+import '../navigation/app_navigation_controller.dart';
 import '../services/auth_service.dart';
 import '../services/friend_service.dart';
 import '../theme/profile_card_theme.dart';
@@ -33,6 +34,10 @@ class _FriendsScreenState extends State<FriendsScreen> {
   @override
   void initState() {
     super.initState();
+    if (AppNavigationController.instance.takeFriendRequestsRequest()) {
+      selectedTab = '친구 요청';
+    }
+    AppNavigationController.instance.addListener(_handleNavigationRequest);
     debugPrint('[FriendsScreen] initState: migrateCurrentUser 호출');
     _migration = _friendService.migrateCurrentUser();
     _currentUserData = _authService.getCurrentUserData();
@@ -40,8 +45,17 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
   @override
   void dispose() {
+    AppNavigationController.instance.removeListener(_handleNavigationRequest);
     friendCodeController.dispose();
     super.dispose();
+  }
+
+  void _handleNavigationRequest() {
+    if (AppNavigationController.instance.takeFriendRequestsRequest() &&
+        mounted &&
+        selectedTab != '친구 요청') {
+      setState(() => selectedTab = '친구 요청');
+    }
   }
 
   Future<void> showAddFriendDialog() async {

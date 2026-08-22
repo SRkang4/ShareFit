@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:top_snackbar_flutter/top_snack_bar.dart';
 
 import '../models/friend.dart';
 import '../models/public_activity.dart';
@@ -8,6 +9,7 @@ import '../models/public_workout_activity.dart';
 import '../services/friend_service.dart';
 import '../services/public_activity_service.dart';
 import '../services/public_workout_activity_service.dart';
+import '../services/wake_up_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/profile_card_theme.dart';
 import '../widgets/section_title.dart';
@@ -24,6 +26,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final PublicActivityService _activityService = PublicActivityService();
   final PublicWorkoutActivityService _publicWorkoutActivityService =
       PublicWorkoutActivityService();
+  final WakeUpService _wakeUpService = WakeUpService();
+  final Set<String> _sendingWakeUps = {};
   final Map<String, PublicActivity> _activities = {};
   final Map<String, List<PublicWorkoutActivity>> _publicWorkouts = {};
   final Map<String, StreamSubscription<PublicActivity>> _activitySubscriptions =
@@ -157,6 +161,45 @@ class _HomeScreenState extends State<HomeScreen> {
         korea.day == now.day;
   }
 
+  Future<void> _sendWakeUp(Friend friend) async {
+    if (_sendingWakeUps.contains(friend.uid)) return;
+    setState(() => _sendingWakeUps.add(friend.uid));
+    try {
+      await _wakeUpService.send(friend.uid);
+      if (mounted) _showTopMessage('깨우기를 보냈습니다.');
+    } on WakeUpException catch (error) {
+      if (mounted) _showTopMessage(error.message, isError: true);
+    } finally {
+      if (mounted) setState(() => _sendingWakeUps.remove(friend.uid));
+    }
+  }
+
+  void _showTopMessage(String message, {bool isError = false}) {
+    final colors = Theme.of(context).colorScheme;
+    showTopSnackBar(
+      Overlay.of(context),
+      Material(
+        color: Colors.transparent,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          decoration: BoxDecoration(
+            color: isError ? colors.error : colors.primary,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final working = <Friend>[];
@@ -223,6 +266,8 @@ class _HomeScreenState extends State<HomeScreen> {
               (friend) => _RestingFriendCard(
                 friend: friend,
                 activity: _activities[friend.uid],
+                isSending: _sendingWakeUps.contains(friend.uid),
+                onWakeUp: () => _sendWakeUp(friend),
               ),
             ),
           ],
@@ -420,9 +465,16 @@ class _CompletedWorkoutPage extends StatelessWidget {
 }
 
 class _RestingFriendCard extends StatelessWidget {
-  const _RestingFriendCard({required this.friend, required this.activity});
+  const _RestingFriendCard({
+    required this.friend,
+    required this.activity,
+    required this.isSending,
+    required this.onWakeUp,
+  });
   final Friend friend;
   final PublicActivity? activity;
+  final bool isSending;
+  final VoidCallback onWakeUp;
   @override
   Widget build(BuildContext context) => _BaseCard(
     friend: friend,
@@ -443,17 +495,26 @@ class _RestingFriendCard extends StatelessWidget {
         SizedBox(
           height: 36,
           child: FilledButton(
-            onPressed: () {},
+            onPressed: isSending ? null : onWakeUp,
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFFF5A76),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(100),
               ),
             ),
-            child: const Text(
-              '깨우기',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
-            ),
+            child: isSending
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text(
+                    '깨우기',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
+                  ),
           ),
         ),
       ],

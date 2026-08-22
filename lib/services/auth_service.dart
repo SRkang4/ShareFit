@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/profile_customization.dart';
+import 'fcm_token_service.dart';
 
 class AuthService {
   AuthService({
@@ -169,6 +170,7 @@ class AuthService {
   }
 
   Future<void> signOut() async {
+    await FcmTokenService().unregisterCurrentToken();
     await _firebaseAuth.signOut();
   }
 
@@ -201,9 +203,13 @@ class AuthService {
         .where('fromUid', isEqualTo: user.uid)
         .where('status', isEqualTo: 'pending')
         .get();
+    final fcmTokens = await userDocument.collection('fcmTokens').get();
     final cleanup = _firestore.batch();
     for (final request in [...receivedRequests.docs, ...sentRequests.docs]) {
       cleanup.delete(request.reference);
+    }
+    for (final token in fcmTokens.docs) {
+      cleanup.delete(token.reference);
     }
     final friendCode = userData?['friendCode'] as String?;
     if (friendCode != null && friendCode.isNotEmpty) {
