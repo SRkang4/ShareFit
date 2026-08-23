@@ -67,10 +67,12 @@ class PublicStrengthSummary {
     required this.bodyParts,
     required this.completedSetCount,
     required this.totalVolumeKg,
+    this.exercises = const [],
   });
   final List<String> bodyParts;
   final int completedSetCount;
   final double totalVolumeKg;
+  final List<PublicStrengthExercise> exercises;
 
   factory PublicStrengthSummary.fromMap(Map<String, dynamic> data) =>
       PublicStrengthSummary(
@@ -79,6 +81,51 @@ class PublicStrengthSummary {
             const [],
         completedSetCount: (data['completedSetCount'] as num?)?.toInt() ?? 0,
         totalVolumeKg: (data['totalVolumeKg'] as num?)?.toDouble() ?? 0,
+        exercises: data['exercises'] is List
+            ? (data['exercises'] as List)
+                  .whereType<Map>()
+                  .map(
+                    (exercise) => PublicStrengthExercise.fromMap(
+                      Map<String, dynamic>.from(exercise),
+                    ),
+                  )
+                  .toList()
+            : const [],
+      );
+}
+
+class PublicStrengthExercise {
+  const PublicStrengthExercise({required this.name, required this.sets});
+
+  final String name;
+  final List<PublicStrengthSet> sets;
+
+  factory PublicStrengthExercise.fromMap(Map<String, dynamic> data) =>
+      PublicStrengthExercise(
+        name: data['name'] as String? ?? '',
+        sets: data['sets'] is List
+            ? (data['sets'] as List)
+                  .whereType<Map>()
+                  .map(
+                    (set) => PublicStrengthSet.fromMap(
+                      Map<String, dynamic>.from(set),
+                    ),
+                  )
+                  .toList()
+            : const [],
+      );
+}
+
+class PublicStrengthSet {
+  const PublicStrengthSet({required this.weightKg, required this.reps});
+
+  final double weightKg;
+  final int reps;
+
+  factory PublicStrengthSet.fromMap(Map<String, dynamic> data) =>
+      PublicStrengthSet(
+        weightKg: (data['weightKg'] as num?)?.toDouble() ?? 0,
+        reps: (data['reps'] as num?)?.toInt() ?? 0,
       );
 }
 

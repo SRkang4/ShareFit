@@ -1,12 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
 
 import '../services/auth_service.dart';
+import '../services/notification_preferences_service.dart';
 import '../theme/app_theme_color.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
+import '../widgets/sharefit_ui.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -21,13 +22,79 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Color get pointColor => Theme.of(context).colorScheme.primary;
 
   final AuthService _authService = AuthService();
+  final NotificationPreferencesService _notificationPreferencesService =
+      NotificationPreferencesService();
 
-  bool friendStartNoti = true;
-  bool shareMyWorkoutNoti = true;
+  bool wakeUpNoti = true;
   bool friendRequestNoti = true;
   bool friendAcceptNoti = true;
-  bool rankingChangeNoti = false;
+  bool _isLoadingNotificationSettings = true;
+  bool _isSavingNotificationSettings = false;
   bool _isProcessingAccountAction = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotificationPreferences();
+  }
+
+  Future<void> _loadNotificationPreferences() async {
+    try {
+      final preferences = await _notificationPreferencesService.load();
+      if (!mounted) return;
+      setState(() {
+        wakeUpNoti = preferences.wakeUp;
+        friendRequestNoti = preferences.friendRequest;
+        friendAcceptNoti = preferences.friendAccepted;
+        _isLoadingNotificationSettings = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingNotificationSettings = false;
+      });
+      _showError('알림 설정을 불러오지 못했습니다. 다시 시도해주세요.');
+    }
+  }
+
+  Future<void> _updateNotificationPreferences({
+    bool? wakeUp,
+    bool? friendRequest,
+    bool? friendAccepted,
+  }) async {
+    final previous = NotificationPreferences(
+      wakeUp: wakeUpNoti,
+      friendRequest: friendRequestNoti,
+      friendAccepted: friendAcceptNoti,
+    );
+    final updated = previous.copyWith(
+      wakeUp: wakeUp,
+      friendRequest: friendRequest,
+      friendAccepted: friendAccepted,
+    );
+    setState(() {
+      wakeUpNoti = updated.wakeUp;
+      friendRequestNoti = updated.friendRequest;
+      friendAcceptNoti = updated.friendAccepted;
+      _isSavingNotificationSettings = true;
+    });
+    try {
+      await _notificationPreferencesService.save(updated);
+      if (!mounted) return;
+      setState(() {
+        _isSavingNotificationSettings = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        wakeUpNoti = previous.wakeUp;
+        friendRequestNoti = previous.friendRequest;
+        friendAcceptNoti = previous.friendAccepted;
+        _isSavingNotificationSettings = false;
+      });
+      _showError('알림 설정을 저장하지 못했습니다. 다시 시도해주세요.');
+    }
+  }
 
   Future<void> _confirmAccountAction({
     required String title,
@@ -274,29 +341,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 80),
+          padding: const EdgeInsets.fromLTRB(20, 45, 20, 120),
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '설정',
+                        style: Theme.of(context).textTheme.headlineLarge
+                            ?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurface,
+                              fontSize: 41,
+                              height: 1.08,
+                              letterSpacing: -1.4,
+                            ),
+                      ),
+                      const SizedBox(height: 9),
+                      Text(
+                        '앱 환경과 계정을 관리합니다.',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
                 IconButton(
                   onPressed: () {
                     Navigator.pop(context);
                   },
-                  icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  '설정',
-                  style: TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w900,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
+                  icon: const Icon(Icons.close_rounded, size: 28),
                 ),
               ],
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 32),
 
             const _ThemeCard(),
 
@@ -306,49 +390,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: '알림 설정',
               children: [
                 _SwitchRow(
-                  title: '친구 운동 시작 알림',
-                  value: friendStartNoti,
-                  onChanged: (value) {
-                    setState(() {
-                      friendStartNoti = value;
-                    });
-                  },
-                ),
-                _SwitchRow(
-                  title: '내 운동 상태 친구에게 알림',
-                  value: shareMyWorkoutNoti,
-                  onChanged: (value) {
-                    setState(() {
-                      shareMyWorkoutNoti = value;
-                    });
-                  },
+                  title: '깨우기 알림',
+                  value: wakeUpNoti,
+                  onChanged:
+                      _isLoadingNotificationSettings ||
+                          _isSavingNotificationSettings
+                      ? null
+                      : (value) =>
+                            _updateNotificationPreferences(wakeUp: value),
                 ),
                 _SwitchRow(
                   title: '친구 신청 알림',
                   value: friendRequestNoti,
-                  onChanged: (value) {
-                    setState(() {
-                      friendRequestNoti = value;
-                    });
-                  },
+                  onChanged:
+                      _isLoadingNotificationSettings ||
+                          _isSavingNotificationSettings
+                      ? null
+                      : (value) => _updateNotificationPreferences(
+                          friendRequest: value,
+                        ),
                 ),
                 _SwitchRow(
                   title: '친구 수락 알림',
                   value: friendAcceptNoti,
-                  onChanged: (value) {
-                    setState(() {
-                      friendAcceptNoti = value;
-                    });
-                  },
-                ),
-                _SwitchRow(
-                  title: '랭킹 순위 변경 알림',
-                  value: rankingChangeNoti,
-                  onChanged: (value) {
-                    setState(() {
-                      rankingChangeNoti = value;
-                    });
-                  },
+                  onChanged:
+                      _isLoadingNotificationSettings ||
+                          _isSavingNotificationSettings
+                      ? null
+                      : (value) => _updateNotificationPreferences(
+                          friendAccepted: value,
+                        ),
                 ),
               ],
             ),
@@ -404,12 +475,8 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return ShareFitCard(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(26),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -432,7 +499,7 @@ class _SectionCard extends StatelessWidget {
 class _SwitchRow extends StatelessWidget {
   final String title;
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
 
   const _SwitchRow({
     required this.title,
@@ -528,75 +595,36 @@ class _ThemeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainer,
-        borderRadius: BorderRadius.circular(26),
-      ),
+    return ShareFitCard(
+      padding: const EdgeInsets.all(22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             '테마',
             style: TextStyle(
-              color: context.foregroundFor(colors.surfaceContainer),
+              color: colors.onSurface,
               fontSize: 19,
               fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _ThemePill(
-                  label: '라이트',
-                  selected: ThemeController.instance.mode == ThemeMode.light,
-                  onTap: () =>
-                      ThemeController.instance.setMode(ThemeMode.light),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _ThemePill(
-                  label: '다크',
-                  selected: ThemeController.instance.mode == ThemeMode.dark,
-                  onTap: () => ThemeController.instance.setMode(ThemeMode.dark),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _ThemePill(
-                  label: '시스템',
-                  selected: ThemeController.instance.mode == ThemeMode.system,
-                  onTap: () =>
-                      ThemeController.instance.setMode(ThemeMode.system),
-                ),
-              ),
-            ],
+          const SizedBox(height: 16),
+          _ThemeModeToggle(
+            dark: ThemeController.instance.mode == ThemeMode.dark,
+            onChanged: (dark) => ThemeController.instance.setMode(
+              dark ? ThemeMode.dark : ThemeMode.light,
+            ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 22),
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              for (
-                var index = 0;
-                index < AppAccentColor.values.length;
-                index++
-              ) ...[
-                if (index > 0) const SizedBox(width: 8),
-                Expanded(
-                  child: _ThemePill(
-                    label: AppAccentColor.values[index].label,
-                    selected:
-                        ThemeController.instance.accent ==
-                        AppAccentColor.values[index],
-                    selectedColor: AppAccentColor.values[index].color,
-                    onTap: () => ThemeController.instance.setAccent(
-                      AppAccentColor.values[index],
-                    ),
-                  ),
+              for (final accent in AppAccentColor.values)
+                _AccentSwatch(
+                  accent: accent,
+                  selected: ThemeController.instance.accent == accent,
+                  onTap: () => ThemeController.instance.setAccent(accent),
                 ),
-              ],
             ],
           ),
         ],
@@ -605,44 +633,152 @@ class _ThemeCard extends StatelessWidget {
   }
 }
 
-class _ThemePill extends StatelessWidget {
-  const _ThemePill({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    this.selectedColor,
-  });
+class _ThemeModeToggle extends StatelessWidget {
+  const _ThemeModeToggle({required this.dark, required this.onChanged});
 
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  final Color? selectedColor;
+  final bool dark;
+  final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
-    final background = selected
-        ? (selectedColor ?? colors.primary)
-        : colors.surfaceContainerHigh;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+    final colors = Theme.of(context).colorScheme;
+    return Semantics(
+      label: '화면 모드',
+      value: dark ? '다크' : '라이트',
       child: Container(
-        height: 36,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        height: 64,
+        padding: const EdgeInsets.all(5),
         decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: selected ? background : colors.outline),
+          color: colors.surfaceContainer,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: colors.outlineVariant),
         ),
-        child: Text(
-          label,
-          maxLines: 1,
-          style: TextStyle(
-            color: selected ? Colors.white : context.foregroundFor(background),
-            fontSize: 12,
-            fontWeight: FontWeight.w900,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final segmentWidth = constraints.maxWidth / 2;
+            return Stack(
+              children: [
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  left: dark ? segmentWidth : 0,
+                  top: 0,
+                  bottom: 0,
+                  width: segmentWidth,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: colors.primary,
+                      borderRadius: BorderRadius.circular(19),
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _ThemeModeIconButton(
+                        label: '라이트',
+                        icon: Icons.light_mode_rounded,
+                        selected: !dark,
+                        onTap: () => onChanged(false),
+                      ),
+                    ),
+                    Expanded(
+                      child: _ThemeModeIconButton(
+                        label: '다크',
+                        icon: Icons.dark_mode_rounded,
+                        selected: dark,
+                        onTap: () => onChanged(true),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ThemeModeIconButton extends StatelessWidget {
+  const _ThemeModeIconButton({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '$label 모드',
+      child: Tooltip(
+        message: label,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(19),
+          child: Center(
+            child: AnimatedOpacity(
+              opacity: selected ? 1 : 0.62,
+              duration: const Duration(milliseconds: 180),
+              child: Icon(
+                icon,
+                size: 29,
+                color: selected ? Colors.white : colors.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AccentSwatch extends StatelessWidget {
+  const _AccentSwatch({
+    required this.accent,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AppAccentColor accent;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '${accent.label} 포인트 컬러',
+      child: Tooltip(
+        message: accent.label,
+        child: InkResponse(
+          onTap: onTap,
+          radius: 28,
+          customBorder: const CircleBorder(),
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: Center(
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: accent.color,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
           ),
         ),
       ),

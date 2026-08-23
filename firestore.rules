@@ -77,16 +77,45 @@ service cloud.firestore {
               .hasOnly(['profileCustomization']);
     }
 
+    function validNotificationPreferences(preferences) {
+      return preferences is map &&
+          preferences.keys().hasOnly(
+              ['wakeUp', 'friendRequest', 'friendAccepted']) &&
+          preferences.keys().hasAll(
+              ['wakeUp', 'friendRequest', 'friendAccepted']) &&
+          preferences.wakeUp is bool &&
+          preferences.friendRequest is bool &&
+          preferences.friendAccepted is bool;
+    }
+
+    function isNotificationPreferencesUpdate(uid) {
+      return request.auth.uid == uid &&
+          validNotificationPreferences(
+              request.resource.data.notificationPreferences) &&
+          request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['notificationPreferences']);
+    }
+
     function validPublicStrengthSummary(summary) {
       return summary == null ||
           (summary is map &&
            summary.keys().hasOnly(
-               ['bodyParts', 'completedSetCount', 'totalVolumeKg']) &&
+               ['bodyParts', 'completedSetCount', 'totalVolumeKg',
+                'exercises']) &&
            summary.bodyParts is list &&
            summary.completedSetCount is int &&
            summary.completedSetCount >= 0 &&
            summary.totalVolumeKg is number &&
-           summary.totalVolumeKg >= 0);
+           summary.totalVolumeKg >= 0 &&
+           (!('exercises' in summary) ||
+            (summary.exercises is list && summary.exercises.size() <= 50)));
+    }
+
+    function publicStrengthMatchesPrivateWorkout(uid, workoutId, data) {
+      return data.type != 'strength' ||
+          (data.strengthSummary.exercises is list &&
+           data.strengthSummary ==
+               getAfter(/databases/$(database)/documents/users/$(uid)/workouts/$(workoutId)).data.strength);
     }
 
     function validPublicRunningSummary(summary) {
@@ -193,6 +222,7 @@ service cloud.firestore {
       allow update: if signedIn() && (
           isProfileUpdate(uid) ||
           isProfileCustomizationUpdate(uid) ||
+          isNotificationPreferencesUpdate(uid) ||
           isLegacyFriendCountMigration(uid) ||
           validAcceptCounterMutation(uid) ||
           validDeleteCounterMutation(uid)
@@ -352,7 +382,9 @@ service cloud.firestore {
 
       allow create: if signedIn() && request.auth.uid == uid &&
           validPublicWorkout(
-              uid, dateKey, workoutId, request.resource.data);
+              uid, dateKey, workoutId, request.resource.data) &&
+          publicStrengthMatchesPrivateWorkout(
+              uid, workoutId, request.resource.data);
 
       allow update: if signedIn() && request.auth.uid == uid &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -398,18 +430,37 @@ service cloud.firestore {
           request.resource.data.dateKey == dateKey &&
           dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
           request.resource.data.workoutCount is int &&
-          request.resource.data.workoutCount == resource.data.workoutCount + 1 &&
           request.resource.data.durationSeconds is int &&
-          request.resource.data.durationSeconds >= resource.data.durationSeconds &&
+          request.resource.data.durationSeconds >= 0 &&
           request.resource.data.strengthVolumeKg is number &&
-          request.resource.data.strengthVolumeKg >=
-              resource.data.get('strengthVolumeKg', 0) &&
+          request.resource.data.strengthVolumeKg >= 0 &&
           request.resource.data.runningDistanceMeters is number &&
-          request.resource.data.runningDistanceMeters >=
-              resource.data.get('runningDistanceMeters', 0) &&
-          request.resource.data.updatedAt is timestamp;
+          request.resource.data.runningDistanceMeters >= 0 &&
+          request.resource.data.updatedAt is timestamp &&
+          (
+            (request.resource.data.workoutCount ==
+                 resource.data.workoutCount + 1 &&
+             request.resource.data.durationSeconds >=
+                 resource.data.durationSeconds &&
+             request.resource.data.strengthVolumeKg >=
+                 resource.data.get('strengthVolumeKg', 0) &&
+             request.resource.data.runningDistanceMeters >=
+                 resource.data.get('runningDistanceMeters', 0)) ||
+            (request.resource.data.workoutCount ==
+                 resource.data.workoutCount - 1 &&
+             request.resource.data.workoutCount >= 1 &&
+             request.resource.data.durationSeconds <=
+                 resource.data.durationSeconds &&
+             request.resource.data.strengthVolumeKg <=
+                 resource.data.get('strengthVolumeKg', 0) &&
+             request.resource.data.runningDistanceMeters <=
+                 resource.data.get('runningDistanceMeters', 0))
+          );
 
-      allow delete: if false;
+      // Owners may remove an empty daily aggregate. This can only lower their
+      // public ranking data and cannot be used to inflate a score.
+      allow delete: if signedIn() && request.auth.uid == uid &&
+          resource.data.uid == uid;
     }
 
     match /friendRequests/{id} {

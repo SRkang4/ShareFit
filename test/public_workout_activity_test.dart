@@ -44,13 +44,38 @@ void main() {
         'bodyParts': ['가슴'],
         'completedSetCount': 3,
         'totalVolumeKg': 2400,
+        'exercises': [
+          {
+            'name': '벤치프레스',
+            'sets': [
+              {'weightKg': 80, 'reps': 10},
+              {'weightKg': 80, 'reps': 8},
+            ],
+          },
+        ],
       },
     });
 
     expect(workout.validPhotoUrl, 'https://example.com/photo.jpg');
     expect(workout.strengthSummary?.completedSetCount, 3);
     expect(workout.strengthSummary?.totalVolumeKg, 2400);
+    expect(workout.strengthSummary?.exercises.single.name, '벤치프레스');
+    expect(workout.strengthSummary?.exercises.single.sets, hasLength(2));
+    expect(workout.strengthSummary?.exercises.single.sets.last.reps, 8);
   });
+
+  test(
+    'keeps legacy public strength summaries without exercises compatible',
+    () {
+      final summary = PublicStrengthSummary.fromMap({
+        'bodyParts': ['등'],
+        'completedSetCount': 2,
+        'totalVolumeKg': 1200,
+      });
+
+      expect(summary.exercises, isEmpty);
+    },
+  );
 
   test('Seoul date key changes at 15:00 UTC', () {
     expect(

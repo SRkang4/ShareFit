@@ -5,6 +5,8 @@ import '../services/auth_service.dart';
 import '../services/ranking_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/competition_ranking.dart';
+import '../widgets/sharefit_ui.dart';
+import '../widgets/sharefit_sliding_segmented_control.dart';
 
 class RankingScreen extends StatefulWidget {
   const RankingScreen({super.key});
@@ -33,28 +35,27 @@ class _RankingScreenState extends State<RankingScreen> {
     return Scaffold(
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+          padding: const EdgeInsets.fromLTRB(20, 45, 20, 148),
           children: [
             Text(
               '랭킹',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.w900,
+              style: Theme.of(context).textTheme.headlineLarge?.copyWith(
                 color: Theme.of(context).colorScheme.onSurface,
+                fontSize: 41,
+                height: 1.08,
+                letterSpacing: -1.4,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 9),
             Text(
               '친구들과 운동 기록을 비교해보세요.',
-              style: TextStyle(
-                fontSize: 15,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 26),
+            const SizedBox(height: 32),
             _buildPeriodSelector(),
-            const SizedBox(height: 28),
+            const SizedBox(height: 24),
             FutureBuilder<bool>(
               future: isProFuture,
               builder: (context, proSnapshot) {
@@ -215,69 +216,17 @@ class _RankingScreenState extends State<RankingScreen> {
   }
 
   Widget _buildPeriodSelector() {
-    return Container(
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          _PeriodButton(
-            title: '이번 주',
-            selected: selectedPeriod == RankingPeriod.week,
-            pointColor: pointColor,
-            onTap: () => setState(() => selectedPeriod = RankingPeriod.week),
-          ),
-          _PeriodButton(
-            title: '이번 달',
-            selected: selectedPeriod == RankingPeriod.month,
-            pointColor: pointColor,
-            onTap: () => setState(() => selectedPeriod = RankingPeriod.month),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PeriodButton extends StatelessWidget {
-  const _PeriodButton({
-    required this.title,
-    required this.selected,
-    required this.pointColor,
-    required this.onTap,
-  });
-
-  final String title;
-  final bool selected;
-  final Color pointColor;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          height: 44,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? pointColor : Colors.transparent,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Text(
-            title,
-            style: TextStyle(
-              color: selected
-                  ? Colors.white
-                  : Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ),
-      ),
+    return ShareFitSlidingSegmentedControl(
+      labels: const ['이번 주', '이번 달'],
+      selectedIndex: selectedPeriod == RankingPeriod.week ? 0 : 1,
+      unselectedForegroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+      onChanged: (index) {
+        setState(() {
+          selectedPeriod = index == 0
+              ? RankingPeriod.week
+              : RankingPeriod.month;
+        });
+      },
     );
   }
 }
@@ -297,23 +246,12 @@ class _RankingSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(26),
-      ),
+    return ShareFitCard(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.w900,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
-          ),
+          ShareFitSectionHeader(title: title),
           const SizedBox(height: 12),
           for (var index = 0; index < rankings.length; index++)
             _RankingRow(
@@ -344,28 +282,32 @@ class _RankingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isFirst = rank == 1;
+    final isPodium = rank <= 3;
     final sectionBackground = context.colors.surfaceContainer;
-    final rowBackground = isFirst
-        ? context.colors.surfaceContainerHigh
+    final rowBackground = isPodium
+        ? pointColor.withValues(alpha: rank == 1 ? 0.12 : 0.06)
         : sectionBackground;
-    final rowForeground = context.foregroundFor(rowBackground);
+    final rowForeground = context.colors.onSurface;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
+      constraints: const BoxConstraints(minHeight: 64),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
-        color: isFirst ? rowBackground : Colors.transparent,
+        color: isPodium ? rowBackground : Colors.transparent,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
         children: [
           SizedBox(
-            width: 34,
-            child: Text(
-              _rankLabel(rank),
-              style: TextStyle(
-                fontSize: isFirst ? 22 : 17,
-                fontWeight: FontWeight.w900,
-                color: isFirst ? pointColor : rowForeground,
+            width: 38,
+            child: Center(
+              child: Text(
+                _rankLabel(rank),
+                style: TextStyle(
+                  fontSize: isFirst ? 22 : 17,
+                  fontWeight: FontWeight.w900,
+                  color: isFirst ? pointColor : rowForeground,
+                ),
               ),
             ),
           ),
@@ -412,7 +354,7 @@ class _RankingRow extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              fontSize: isFirst ? 17 : 15,
+              fontSize: 16,
               fontWeight: FontWeight.w900,
               color: isFirst ? pointColor : rowForeground,
             ),

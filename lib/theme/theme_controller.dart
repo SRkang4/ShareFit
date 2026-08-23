@@ -11,7 +11,7 @@ class ThemeController extends ChangeNotifier {
   static const _modeKey = 'themeMode';
 
   AppAccentColor accent = AppAccentColor.blue;
-  ThemeMode mode = ThemeMode.system;
+  ThemeMode mode = ThemeMode.light;
 
   Future<void> load() async {
     final preferences = await SharedPreferences.getInstance();
@@ -19,10 +19,11 @@ class ThemeController extends ChangeNotifier {
       (value) => value.name == preferences.getString(_accentKey),
       orElse: () => AppAccentColor.blue,
     );
-    mode = ThemeMode.values.firstWhere(
-      (value) => value.name == preferences.getString(_modeKey),
-      orElse: () => ThemeMode.system,
-    );
+    final storedMode = preferences.getString(_modeKey);
+    mode = storedMode == ThemeMode.dark.name ? ThemeMode.dark : ThemeMode.light;
+    if (storedMode != mode.name) {
+      await preferences.setString(_modeKey, mode.name);
+    }
   }
 
   Future<void> setAccent(AppAccentColor value) async {
@@ -34,10 +35,13 @@ class ThemeController extends ChangeNotifier {
   }
 
   Future<void> setMode(ThemeMode value) async {
-    if (mode == value) return;
-    mode = value;
+    final normalized = value == ThemeMode.dark
+        ? ThemeMode.dark
+        : ThemeMode.light;
+    if (mode == normalized) return;
+    mode = normalized;
     notifyListeners();
     final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(_modeKey, value.name);
+    await preferences.setString(_modeKey, normalized.name);
   }
 }

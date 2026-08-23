@@ -7,6 +7,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
 
+import '../data/exercise_catalog.dart';
+import '../controllers/workout_session_controller.dart';
 import '../models/workout_record.dart';
 import '../services/auth_service.dart';
 import '../services/location_tracking_service.dart';
@@ -15,7 +17,12 @@ import '../services/workout_progress_notification_service.dart';
 import '../services/workout_photo_service.dart';
 import '../services/workout_photo_save_service.dart';
 import '../services/workout_service.dart';
-import '../widgets/workout_history_card.dart';
+import '../utils/workout_exercise_plan.dart';
+import '../widgets/active_workout_timer_pill.dart';
+import '../widgets/exercise_picker_sheet.dart';
+import '../widgets/sharefit_sliding_segmented_control.dart';
+import '../widgets/sharefit_ui.dart';
+import '../widgets/workout_record_detail.dart';
 
 class WorkoutScreen extends StatefulWidget {
   const WorkoutScreen({super.key, this.isActive = true});
@@ -28,15 +35,21 @@ class WorkoutScreen extends StatefulWidget {
 
 class _WorkoutScreenState extends State<WorkoutScreen>
     with WidgetsBindingObserver {
+  static const double _floatingNavigationClearance = 104;
+  static const double _idleBottomScrollPadding =
+      _floatingNavigationClearance + 32;
+
   Color get pointColor => Theme.of(context).colorScheme.primary;
   Color get subPointColor => Theme.of(context).colorScheme.primaryContainer;
 
   String selectedWorkoutType = '헬스';
-  bool isWorkoutStarted = false;
+  int selectedIdleViewIndex = 0;
   bool isWorkoutFinished = false;
 
   final List<String> bodyParts = ['가슴', '등', '어깨', '하체', '팔'];
   final Set<String> selectedBodyParts = {};
+  final Set<String> activeWorkoutBodyParts = {};
+  final List<String?> plannedExerciseNames = [];
 
   final List<ExerciseCardData> exercises = [ExerciseCardData()];
   final Map<String, WorkoutRecord> locallyCompletedWorkouts = {};
@@ -59,20 +72,22 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   double runningDistanceMeters = 0.0;
   Position? lastRunningPosition;
   int validRunningLocationCount = 0;
-  Timer? timer;
   Timer? weakGpsTimer;
-  int seconds = 0;
-  bool isPaused = false;
   bool isStartingWorkout = false;
   bool isChangingPauseState = false;
   bool isFinishingWorkout = false;
   bool hasShownWeakGpsMessage = false;
-  DateTime? workoutStartedAt;
-  Duration accumulatedActiveDuration = Duration.zero;
-  DateTime? activeSegmentStartedAt;
   AppLifecycleState appLifecycleState = AppLifecycleState.resumed;
   String? lastErrorMessage;
   DateTime? lastErrorShownAt;
+
+  final WorkoutSessionController workoutSession =
+      WorkoutSessionController.instance;
+
+  bool get isWorkoutStarted => workoutSession.isActive;
+  bool get isPaused => workoutSession.isPaused;
+  int get seconds => workoutSession.elapsedSeconds;
+  DateTime? get workoutStartedAt => workoutSession.startedAt;
 
   double get runningDistanceKm => runningDistanceMeters / 1000;
 
@@ -80,8 +95,12 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    workoutSession.addListener(_handleWorkoutSessionChanged);
     todayWorkoutsStream = workoutService.watchTodayWorkouts();
     isProFuture = _loadIsPro();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncWorkoutViewVisibility();
+    });
   }
 
   Future<bool> _loadIsPro() async {
@@ -138,12 +157,14 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         justCompletedWorkoutId = null;
       });
     }
+    _syncWorkoutViewVisibility();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    timer?.cancel();
+    workoutSession.removeListener(_handleWorkoutSessionChanged);
+    workoutSession.finish();
     weakGpsTimer?.cancel();
     unawaited(locationTrackingService.dispose());
     unawaited(progressNotificationService.stop());
@@ -161,18 +182,31 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         isWorkoutStarted &&
         !isPaused &&
         mounted) {
-      final currentSeconds = _activeDurationAt(DateTime.now()).inSeconds;
-      setState(() {
-        seconds = currentSeconds;
-      });
+      workoutSession.refresh();
       unawaited(_updateProgressNotification(force: true));
     }
+  }
+
+  void _handleWorkoutSessionChanged() {
+    if (!mounted) return;
+    setState(() {});
+    if (isWorkoutStarted && !isFinishingWorkout) {
+      unawaited(_updateProgressNotification());
+    }
+  }
+
+  void _syncWorkoutViewVisibility() {
+    workoutSession.setWorkoutViewVisible(widget.isActive && isWorkoutStarted);
   }
 
   Future<void> startWorkout() async {
     if (isStartingWorkout) {
       return;
     }
+    final preparedExerciseNames = normalizePlannedExerciseNames(
+      plannedExerciseNames,
+    );
+    final preparedBodyParts = Set<String>.of(selectedBodyParts);
     setState(() {
       isStartingWorkout = true;
     });
@@ -218,26 +252,28 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     }
     if (!mounted) return;
     setState(() {
-      if (isWorkoutFinished) {
-        resetCurrentWorkout();
-        isWorkoutFinished = false;
+      if (selectedWorkoutType == '헬스') {
+        _replaceActiveExercises(preparedExerciseNames);
       }
 
-      isWorkoutStarted = true;
-      isPaused = false;
-      seconds = 0;
-      workoutStartedAt = startedAt;
-      accumulatedActiveDuration = Duration.zero;
-      activeSegmentStartedAt = startedAt;
+      isWorkoutFinished = false;
       if (selectedWorkoutType != '러닝') {
         runningDistanceMeters = 0.0;
         lastRunningPosition = null;
         validRunningLocationCount = 0;
       }
+      activeWorkoutBodyParts
+        ..clear()
+        ..addAll(preparedBodyParts);
+      selectedBodyParts.clear();
+      plannedExerciseNames.clear();
       isStartingWorkout = false;
     });
-
-    _startActiveTimer();
+    workoutSession.start(
+      workoutType: selectedWorkoutType == '러닝' ? 'running' : 'strength',
+      startedAt: startedAt,
+    );
+    _syncWorkoutViewVisibility();
     unawaited(_startProgressNotification());
   }
 
@@ -266,17 +302,11 @@ class _WorkoutScreenState extends State<WorkoutScreen>
 
     if (selectedWorkoutType != '러닝') {
       final now = DateTime.now();
-      setState(() {
-        if (isPaused) {
-          isPaused = false;
-          activeSegmentStartedAt = now;
-        } else {
-          accumulatedActiveDuration = _activeDurationAt(now);
-          activeSegmentStartedAt = null;
-          seconds = accumulatedActiveDuration.inSeconds;
-          isPaused = true;
-        }
-      });
+      if (isPaused) {
+        workoutSession.resume(now);
+      } else {
+        workoutSession.pause(now);
+      }
       unawaited(_updateProgressNotification(force: true));
       return;
     }
@@ -285,12 +315,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
 
     if (!isPaused) {
       final now = DateTime.now();
-      setState(() {
-        accumulatedActiveDuration = _activeDurationAt(now);
-        activeSegmentStartedAt = null;
-        seconds = accumulatedActiveDuration.inSeconds;
-        isPaused = true;
-      });
+      workoutSession.pause(now);
       await _stopRunningLocationTracking();
       await _updateProgressNotification(force: true);
       isChangingPauseState = false;
@@ -312,10 +337,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       return;
     }
     final resumedAt = DateTime.now();
-    setState(() {
-      isPaused = false;
-      activeSegmentStartedAt = resumedAt;
-    });
+    workoutSession.resume(resumedAt);
     await _updateProgressNotification(force: true);
     isChangingPauseState = false;
   }
@@ -326,7 +348,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     }
 
     final endedAt = DateTime.now();
-    final finalActiveDuration = _activeDurationAt(endedAt);
+    final finalActiveDuration = workoutSession.elapsedAt(endedAt);
     final durationSeconds = finalActiveDuration.inSeconds;
     late final WorkoutRecord workoutRecord;
 
@@ -344,14 +366,10 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     }
 
     final wasPaused = isPaused;
+    workoutSession.pause(endedAt);
     setState(() {
-      accumulatedActiveDuration = finalActiveDuration;
-      activeSegmentStartedAt = null;
-      seconds = durationSeconds;
       isFinishingWorkout = true;
-      isPaused = true;
     });
-    timer?.cancel();
 
     if (selectedWorkoutType == '러닝') {
       try {
@@ -362,7 +380,6 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         }
         setState(() {
           isFinishingWorkout = false;
-          isPaused = true;
         });
         _showError('위치 추적을 종료하지 못했습니다. 잠시 후 다시 시도해주세요.');
         return;
@@ -407,11 +424,9 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       }
       setState(() {
         isFinishingWorkout = false;
-        isPaused = wasPaused || !resumed;
-        activeSegmentStartedAt = isPaused ? null : DateTime.now();
       });
-      if (!isPaused) {
-        _startActiveTimer();
+      if (!wasPaused && resumed) {
+        workoutSession.resume(DateTime.now());
       }
       await _updateProgressNotification(force: true);
       _showError('운동 기록을 저장하지 못했습니다. 다시 시도해주세요.');
@@ -439,15 +454,12 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         strength: workoutRecord.strength,
         running: workoutRecord.running,
       );
-      isWorkoutStarted = false;
-      isPaused = false;
       isWorkoutFinished = true;
       justCompletedWorkoutId = workoutId;
+      selectedIdleViewIndex = 1;
       isFinishingWorkout = false;
-      workoutStartedAt = null;
-      accumulatedActiveDuration = Duration.zero;
-      activeSegmentStartedAt = null;
     });
+    workoutSession.finish();
   }
 
   WorkoutRecord _createWorkoutRecord({
@@ -547,7 +559,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
 
     return StrengthWorkoutData(
       bodyParts: bodyParts
-          .where((bodyPart) => selectedBodyParts.contains(bodyPart))
+          .where((bodyPart) => activeWorkoutBodyParts.contains(bodyPart))
           .toList(),
       exercises: savedExercises,
       completedSetCount: completedSetCount,
@@ -555,33 +567,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     );
   }
 
-  void _startActiveTimer() {
-    timer?.cancel();
-    timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted || isPaused) {
-        return;
-      }
-      final currentSeconds = _activeDurationAt(DateTime.now()).inSeconds;
-      if (currentSeconds != seconds) {
-        setState(() {
-          seconds = currentSeconds;
-        });
-      }
-      unawaited(_updateProgressNotification());
-    });
-  }
-
   bool get _isAppInForeground => appLifecycleState == AppLifecycleState.resumed;
-
-  Duration _activeDurationAt(DateTime now) {
-    final segmentStartedAt = activeSegmentStartedAt;
-    if (segmentStartedAt == null ||
-        isPaused ||
-        now.isBefore(segmentStartedAt)) {
-      return accumulatedActiveDuration;
-    }
-    return accumulatedActiveDuration + now.difference(segmentStartedAt);
-  }
 
   String _formatDuration(int durationSeconds) {
     final h = durationSeconds ~/ 3600;
@@ -606,7 +592,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       } else {
         await progressNotificationService.startStrength(
           durationSeconds: seconds,
-          bodyParts: selectedBodyParts,
+          bodyParts: activeWorkoutBodyParts,
         );
       }
     } catch (_) {
@@ -627,7 +613,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       } else {
         await progressNotificationService.updateStrength(
           durationSeconds: seconds,
-          bodyParts: selectedBodyParts,
+          bodyParts: activeWorkoutBodyParts,
           isPaused: isPaused,
           force: force,
         );
@@ -726,9 +712,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     }
 
     if (isWorkoutStarted && !isPaused) {
-      setState(() {
-        isPaused = true;
-      });
+      workoutSession.pause();
     }
     unawaited(_pauseAfterLocationFailure());
     _showLocationError(error);
@@ -984,16 +968,21 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     }
   }
 
-  void resetCurrentWorkout() {
+  void _replaceActiveExercises(List<String> exerciseNames) {
     for (final exercise in exercises) {
       exercise.dispose();
     }
 
-    exercises
-      ..clear()
-      ..add(ExerciseCardData());
-
-    selectedBodyParts.clear();
+    exercises.clear();
+    if (exerciseNames.isEmpty) {
+      exercises.add(ExerciseCardData());
+      return;
+    }
+    exercises.addAll(
+      exerciseNames.map(
+        (exerciseName) => ExerciseCardData(exerciseName: exerciseName),
+      ),
+    );
   }
 
   void addExerciseCard() {
@@ -1003,7 +992,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   }
 
   void removeExerciseCard() {
-    if (exercises.length <= 1) return;
+    if (exercises.isEmpty) return;
 
     setState(() {
       final removed = exercises.removeLast();
@@ -1011,51 +1000,104 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     });
   }
 
-  String get formattedTime {
-    final h = seconds ~/ 3600;
-    final m = (seconds % 3600) ~/ 60;
-    final s = seconds % 60;
+  Future<void> _selectActiveExercise(int index) async {
+    if (index < 0 || index >= exercises.length) return;
+    if (activeWorkoutBodyParts.isEmpty) {
+      _showError('먼저 운동 부위를 선택해주세요.');
+      return;
+    }
 
-    return '${h.toString().padLeft(2, '0')}:'
-        '${m.toString().padLeft(2, '0')}:'
-        '${s.toString().padLeft(2, '0')}';
+    final exercise = exercises[index];
+    final selectedExercise = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.42),
+      builder: (context) => ExercisePickerSheet(
+        exercises: ExerciseCatalog.forBodyParts(activeWorkoutBodyParts),
+        selectedExercise: exercise.exerciseNameController.text.trim(),
+      ),
+    );
+
+    if (!mounted || selectedExercise == null) return;
+    if (index >= exercises.length || !identical(exercises[index], exercise)) {
+      return;
+    }
+    setState(() {
+      exercise.updateExerciseName(selectedExercise);
+    });
   }
+
+  String get formattedTime => formatWorkoutDuration(seconds);
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final dangerColor = colors.error.withValues(alpha: 0.72);
     return Scaffold(
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-          children: [
-            _buildHeader(),
-            const SizedBox(height: 26),
-
-            if (!isWorkoutStarted) ...[
-              _buildIdleWorkoutContent(),
-            ] else ...[
-              if (selectedWorkoutType == '헬스') ...[
-                _buildExerciseController(),
-                const SizedBox(height: 18),
-
-                ...exercises.map(
-                  (exercise) => ExerciseRecordCard(
-                    data: exercise,
-                    pointColor: pointColor,
-                    onChanged: () {
-                      setState(() {});
-                    },
-                  ),
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: SafeArea(
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  45,
+                  20,
+                  isWorkoutStarted ? 28 : _idleBottomScrollPadding,
                 ),
-              ] else ...[
-                _buildRunningWorkoutView(),
-              ],
-            ],
-          ],
-        ),
+                children: [
+                  _buildHeader(),
+                  SizedBox(height: isWorkoutStarted ? 32 : 22),
+
+                  if (!isWorkoutStarted) ...[
+                    _buildIdleViewSelector(),
+                    const SizedBox(height: 24),
+                    _buildIdleWorkoutContent(),
+                  ] else ...[
+                    if (selectedWorkoutType == '헬스') ...[
+                      _buildExerciseController(),
+                      const SizedBox(height: 18),
+
+                      ...List.generate(
+                        exercises.length,
+                        (index) => ExerciseRecordCard(
+                          key: ObjectKey(exercises[index]),
+                          data: exercises[index],
+                          pointColor: pointColor,
+                          onExerciseNameTap: () => _selectActiveExercise(index),
+                          onChanged: () {
+                            setState(() {});
+                          },
+                        ),
+                      ),
+                    ] else ...[
+                      _buildRunningWorkoutView(),
+                    ],
+                  ],
+                ],
+              ),
+            ),
+          ),
+          if (isWorkoutStarted && selectedWorkoutType == '헬스')
+            Positioned(
+              top: WorkoutTimerPillLayout.screenTop(context),
+              right: WorkoutTimerPillLayout.right,
+              child: WorkoutTimerPill(
+                elapsedSeconds: seconds,
+                isPaused: isPaused,
+                semanticLabel: isPaused ? '일시정지된 운동 시간' : '진행 중인 운동 시간',
+              ),
+            ),
+        ],
       ),
       bottomNavigationBar: isWorkoutStarted
           ? SafeArea(
+              top: false,
+              minimum: const EdgeInsets.only(
+                bottom: _floatingNavigationClearance,
+              ),
               child: Container(
                 padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
                 color: Theme.of(context).colorScheme.surface,
@@ -1091,20 +1133,26 @@ class _WorkoutScreenState extends State<WorkoutScreen>
                         child: ElevatedButton(
                           onPressed: isFinishingWorkout ? null : finishWorkout,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFFF5A76),
-                            foregroundColor: Colors.white,
+                            backgroundColor: colors.surfaceContainerHigh,
+                            foregroundColor: dangerColor,
+                            disabledBackgroundColor:
+                                colors.surfaceContainerHigh,
+                            disabledForegroundColor: dangerColor.withValues(
+                              alpha: 0.45,
+                            ),
                             elevation: 0,
+                            side: BorderSide(color: colors.outlineVariant),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(20),
                             ),
                           ),
                           child: isFinishingWorkout
-                              ? const SizedBox(
+                              ? SizedBox(
                                   width: 20,
                                   height: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2.5,
-                                    color: Colors.white,
+                                    color: dangerColor,
                                   ),
                                 )
                               : const Text(
@@ -1133,67 +1181,72 @@ class _WorkoutScreenState extends State<WorkoutScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 '운동',
-                style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900),
+                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontSize: 41,
+                  height: 1.08,
+                  letterSpacing: -1.4,
+                ),
               ),
-
               if (!isWorkoutStarted) ...[
-                const SizedBox(height: 8),
-                const Text(
-                  '오늘의 운동을 시작해보세요.',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                const SizedBox(height: 9),
+                Text(
+                  selectedIdleViewIndex == 0
+                      ? '오늘의 운동을 시작해보세요.'
+                      : '오늘 완료한 운동이에요.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ],
           ),
         ),
-
-        if (isWorkoutStarted && selectedWorkoutType == '헬스')
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: pointColor,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Text(
-              formattedTime,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
       ],
     );
   }
 
+  Widget _buildIdleViewSelector() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final controlWidth = (constraints.maxWidth * 0.48).clamp(156.0, 180.0);
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: SizedBox(
+            width: controlWidth,
+            child: ShareFitSlidingSegmentedControl(
+              labels: const ['운동 준비', '오늘 기록'],
+              icons: const [
+                Icons.fitness_center_rounded,
+                Icons.menu_book_rounded,
+              ],
+              selectedIndex: selectedIdleViewIndex,
+              height: 54,
+              onChanged: (index) {
+                if (selectedIdleViewIndex == index) return;
+                setState(() {
+                  selectedIdleViewIndex = index;
+                });
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildWorkoutTypeSelector() {
-    return Row(
-      children: [
-        _WorkoutTypeChip(
-          title: '헬스',
-          selected: selectedWorkoutType == '헬스',
-          pointColor: pointColor,
-          onTap: () {
-            setState(() {
-              selectedWorkoutType = '헬스';
-            });
-          },
-        ),
-        const SizedBox(width: 12),
-        _WorkoutTypeChip(
-          title: '러닝',
-          selected: selectedWorkoutType == '러닝',
-          pointColor: pointColor,
-          onTap: () {
-            setState(() {
-              selectedWorkoutType = '러닝';
-            });
-          },
-        ),
-      ],
+    return ShareFitSlidingSegmentedControl(
+      labels: const ['헬스', '러닝'],
+      selectedIndex: selectedWorkoutType == '헬스' ? 0 : 1,
+      height: 60,
+      onChanged: (index) {
+        setState(() {
+          selectedWorkoutType = index == 0 ? '헬스' : '러닝';
+        });
+      },
     );
   }
 
@@ -1292,7 +1345,8 @@ class _WorkoutScreenState extends State<WorkoutScreen>
             const SizedBox(width: 10),
             _SmallCircleButton(
               icon: Icons.remove,
-              color: const Color(0xFFFF5A76),
+              color: pointColor,
+              destructive: true,
               onTap: decreaseRunningGoal,
             ),
           ],
@@ -1322,6 +1376,127 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     );
   }
 
+  void _addPlannedExerciseSlot() {
+    setState(() {
+      plannedExerciseNames.add(null);
+    });
+  }
+
+  void _removePlannedExerciseSlot() {
+    if (plannedExerciseNames.isEmpty) return;
+    setState(() {
+      plannedExerciseNames.removeLast();
+    });
+  }
+
+  Future<void> _onPlannedExerciseSlotTap(int index) async {
+    if (selectedBodyParts.isEmpty) {
+      _showError('먼저 운동 부위를 선택해주세요.');
+      return;
+    }
+    if (index < 0 || index >= plannedExerciseNames.length) return;
+
+    final availableExercises = ExerciseCatalog.forBodyParts(selectedBodyParts);
+    final selectedExercise = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.42),
+      builder: (context) => ExercisePickerSheet(
+        exercises: availableExercises,
+        selectedExercise: plannedExerciseNames[index],
+      ),
+    );
+
+    if (!mounted || selectedExercise == null) return;
+    if (index >= plannedExerciseNames.length) return;
+    setState(() {
+      plannedExerciseNames[index] = selectedExercise;
+    });
+  }
+
+  Widget _buildPlannedExerciseSection() {
+    final colors = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                '종목',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
+            ),
+            _PlannedExerciseActionButton(
+              icon: Icons.add_rounded,
+              semanticLabel: '종목 추가',
+              onPressed: _addPlannedExerciseSlot,
+            ),
+            const SizedBox(width: 8),
+            _PlannedExerciseActionButton(
+              icon: Icons.remove_rounded,
+              semanticLabel: '종목 제거',
+              onPressed: plannedExerciseNames.isEmpty
+                  ? null
+                  : _removePlannedExerciseSlot,
+            ),
+          ],
+        ),
+        if (plannedExerciseNames.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          for (var index = 0; index < plannedExerciseNames.length; index++) ...[
+            Row(
+              children: [
+                SizedBox(
+                  width: 34,
+                  child: Text(
+                    '${index + 1}.',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Material(
+                    color: colors.surfaceContainer,
+                    borderRadius: BorderRadius.circular(18),
+                    child: InkWell(
+                      onTap: () => _onPlannedExerciseSlotTap(index),
+                      borderRadius: BorderRadius.circular(18),
+                      child: Container(
+                        constraints: const BoxConstraints(minHeight: 54),
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                plannedExerciseNames[index] ?? '운동 종목 선택',
+                                style: Theme.of(context).textTheme.bodyLarge
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (index != plannedExerciseNames.length - 1)
+              const SizedBox(height: 10),
+          ],
+        ],
+      ],
+    );
+  }
+
   Widget _buildIdleWorkoutContent() {
     return FutureBuilder<bool>(
       future: isProFuture,
@@ -1348,49 +1523,94 @@ class _WorkoutScreenState extends State<WorkoutScreen>
             final previousRecords = records
                 .where((record) => record.id != justCompletedId)
                 .toList();
-            final workoutSetup = <Widget>[
-              _buildWorkoutTypeSelector(),
-              const SizedBox(height: 26),
-              if (selectedWorkoutType == '헬스') ...[
-                _buildBodyPartSelector(),
-                const SizedBox(height: 32),
-              ],
-              if (selectedWorkoutType == '러닝') ...[
-                _buildRunningGoalInput(),
-                const SizedBox(height: 32),
-              ],
-              _buildStartButton(),
-            ];
+            final workoutSetup = ShareFitCard(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '운동 종류',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleLarge?.copyWith(fontSize: 20),
+                  ),
+                  const SizedBox(height: 14),
+                  _buildWorkoutTypeSelector(),
+                  const SizedBox(height: 26),
+                  if (selectedWorkoutType == '헬스') ...[
+                    _buildBodyPartSelector(),
+                    const SizedBox(height: 28),
+                    _buildPlannedExerciseSection(),
+                    const SizedBox(height: 32),
+                  ],
+                  if (selectedWorkoutType == '러닝') ...[
+                    _buildRunningGoalInput(),
+                    const SizedBox(height: 32),
+                  ],
+                  _buildStartButton(),
+                ],
+              ),
+            );
 
+            if (selectedIdleViewIndex == 0) {
+              return workoutSetup;
+            }
+
+            final allRecords = previousRecords.toList(growable: true);
+            if (justCompleted != null) {
+              allRecords.insert(0, justCompleted);
+            }
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (justCompleted != null) ...[
-                  _buildHistoryCard(
-                    justCompleted,
-                    title: '오늘 운동 완료',
-                    canShowPhotoButton:
-                        isPro ||
-                        _hasWorkoutPhoto(justCompleted) ||
-                        !hasTodayPhoto,
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                ...workoutSetup,
-                if (previousRecords.isNotEmpty) ...[
-                  const SizedBox(height: 30),
-                  const Text(
-                    '오늘 운동 완료',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 16),
-                  for (final record in previousRecords)
-                    _buildHistoryCard(
-                      record,
-                      canShowPhotoButton:
-                          isPro || _hasWorkoutPhoto(record) || !hasTodayPhoto,
+                Text(
+                  '오늘 운동 완료',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontSize: 24),
+                ),
+                const SizedBox(height: 16),
+                if (allRecords.isEmpty)
+                  ShareFitCard(
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.menu_book_outlined,
+                              size: 34,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              '오늘 완료한 운동이 없어요.',
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                ],
+                  )
+                else
+                  for (final record in allRecords)
+                    WorkoutRecordSummaryCard(
+                      key: ValueKey(record.id),
+                      workout: record,
+                      onTap: () => _openWorkoutRecordDetail(
+                        record,
+                        canShowPhotoButton:
+                            isPro || _hasWorkoutPhoto(record) || !hasTodayPhoto,
+                      ),
+                    ),
               ],
             );
           },
@@ -1399,27 +1619,63 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     );
   }
 
-  Widget _buildHistoryCard(
+  Future<void> _openWorkoutRecordDetail(
     WorkoutRecord workout, {
-    String? title,
     required bool canShowPhotoButton,
-  }) {
+  }) async {
     final workoutId = workout.id;
-    return WorkoutHistoryCard(
-      key: ValueKey(workoutId),
-      workout: workout,
-      title: title,
-      imageFile: workoutId == null ? null : workoutImages[workoutId],
-      onSavePhotoPressed:
-          workoutId != null &&
-              workout.userId == workoutService.currentUserId &&
-              workout.hasValidPhoto
-          ? () => _saveWorkoutPhoto(workout)
-          : null,
-      onPhotoPressed: workoutId == null || !canShowPhotoButton
-          ? null
-          : () => pickWorkoutImage(workoutId),
+    final deleted = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.42),
+      builder: (context) => WorkoutRecordDetailSheet(
+        workout: workout,
+        onDelete: () => _deleteWorkoutRecord(workout),
+        onPhotoPressed: workoutId == null || !canShowPhotoButton
+            ? null
+            : () => pickWorkoutImage(workoutId),
+        onSavePhotoPressed:
+            workoutId != null &&
+                workout.userId == workoutService.currentUserId &&
+                workout.hasValidPhoto
+            ? () => _saveWorkoutPhoto(workout)
+            : null,
+      ),
     );
+    if (!mounted || deleted != true) return;
+    _showError('운동 기록을 삭제했어요.');
+  }
+
+  Future<void> _deleteWorkoutRecord(WorkoutRecord workout) async {
+    try {
+      await workoutService.deleteCompletedWorkout(workout);
+      final photoUrl = workout.validPhotoUrl;
+      if (photoUrl != null) {
+        try {
+          await workoutPhotoService.deleteByDownloadUrl(photoUrl);
+        } catch (error, stackTrace) {
+          debugPrint('[WorkoutDelete][${workout.id}] Storage 정리 실패: $error');
+          debugPrintStack(stackTrace: stackTrace);
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        locallyCompletedWorkouts.remove(workout.id);
+        workoutImages.remove(workout.id);
+        if (justCompletedWorkoutId == workout.id) {
+          justCompletedWorkoutId = null;
+        }
+      });
+    } catch (error, stackTrace) {
+      debugPrint('[WorkoutDelete][${workout.id}] 기록 삭제 실패: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        _showError('운동 기록을 삭제하지 못했습니다. 다시 시도해주세요.');
+      }
+      rethrow;
+    }
   }
 
   // Legacy adapter retained for local image compatibility.
@@ -1586,7 +1842,8 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         const SizedBox(width: 8),
         _SmallCircleButton(
           icon: Icons.remove,
-          color: const Color(0xFFFF5A76),
+          color: pointColor,
+          destructive: true,
           onTap: removeExerciseCard,
         ),
       ],
@@ -1741,56 +1998,18 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   }
 }
 
-class _WorkoutTypeChip extends StatelessWidget {
-  final String title;
-  final bool selected;
-  final Color pointColor;
-  final VoidCallback onTap;
-
-  const _WorkoutTypeChip({
-    required this.title,
-    required this.selected,
-    required this.pointColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
-        decoration: BoxDecoration(
-          color: selected
-              ? pointColor
-              : Theme.of(context).colorScheme.surfaceContainer,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Text(
-          title,
-          style: TextStyle(
-            color: selected
-                ? Colors.white
-                : Theme.of(context).colorScheme.onSurface,
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class ExerciseRecordCard extends StatefulWidget {
   final ExerciseCardData data;
   final Color pointColor;
   final VoidCallback onChanged;
+  final VoidCallback onExerciseNameTap;
 
   const ExerciseRecordCard({
     super.key,
     required this.data,
     required this.pointColor,
     required this.onChanged,
+    required this.onExerciseNameTap,
   });
 
   @override
@@ -1830,15 +2049,41 @@ class _ExerciseRecordCardState extends State<ExerciseRecordCard> {
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: widget.data.exerciseNameController,
-                  decoration: const InputDecoration(
-                    hintText: '운동 종목',
-                    border: InputBorder.none,
-                  ),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: widget.onExerciseNameTap,
+                    borderRadius: BorderRadius.circular(14),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 10,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.data.exerciseNameController.text
+                                      .trim()
+                                      .isEmpty
+                                  ? '운동 종목 선택'
+                                  : widget.data.exerciseNameController.text
+                                        .trim(),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1850,7 +2095,8 @@ class _ExerciseRecordCardState extends State<ExerciseRecordCard> {
               const SizedBox(width: 8),
               _SmallCircleButton(
                 icon: Icons.remove,
-                color: const Color(0xFFFF5A76),
+                color: widget.pointColor,
+                destructive: true,
                 onTap: removeSet,
               ),
             ],
@@ -1993,29 +2239,93 @@ class _SmallCircleButton extends StatelessWidget {
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
+  final bool destructive;
 
   const _SmallCircleButton({
     required this.icon,
     required this.color,
     required this.onTap,
+    this.destructive = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final dangerColor = colors.error.withValues(alpha: 0.72);
     return GestureDetector(
       onTap: onTap,
-      child: CircleAvatar(
-        radius: 18,
-        backgroundColor: color,
-        child: Icon(icon, color: Colors.white, size: 20),
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: destructive ? colors.surfaceContainerHigh : color,
+          shape: BoxShape.circle,
+          border: destructive ? Border.all(color: colors.outlineVariant) : null,
+        ),
+        child: Icon(
+          icon,
+          color: destructive ? dangerColor : Colors.white,
+          size: 20,
+        ),
+      ),
+    );
+  }
+}
+
+class _PlannedExerciseActionButton extends StatelessWidget {
+  const _PlannedExerciseActionButton({
+    required this.icon,
+    required this.semanticLabel,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String semanticLabel;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final enabled = onPressed != null;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: semanticLabel,
+      child: Material(
+        color: colors.surfaceContainerHigh.withValues(
+          alpha: enabled ? 1 : 0.55,
+        ),
+        shape: const CircleBorder(),
+        child: InkWell(
+          onTap: onPressed,
+          customBorder: const CircleBorder(),
+          child: SizedBox(
+            width: 42,
+            height: 42,
+            child: Icon(
+              icon,
+              size: 22,
+              color: enabled
+                  ? colors.onSurface
+                  : colors.onSurfaceVariant.withValues(alpha: 0.45),
+            ),
+          ),
+        ),
       ),
     );
   }
 }
 
 class ExerciseCardData {
-  final TextEditingController exerciseNameController = TextEditingController();
+  ExerciseCardData({String? exerciseName})
+    : exerciseNameController = TextEditingController(text: exerciseName);
+
+  final TextEditingController exerciseNameController;
   final List<ExerciseSetData> sets = [ExerciseSetData()];
+
+  void updateExerciseName(String exerciseName) {
+    exerciseNameController.text = exerciseName.trim();
+  }
 
   void dispose() {
     exerciseNameController.dispose();

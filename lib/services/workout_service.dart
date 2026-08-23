@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/workout_record.dart';
+import '../utils/workout_deletion.dart';
 
 class WorkoutService {
   WorkoutService({FirebaseAuth? firebaseAuth, FirebaseFirestore? firestore})
@@ -63,13 +64,7 @@ class WorkoutService {
       'photoExpiresAt': workout.photoExpiresAt == null
           ? null
           : Timestamp.fromDate(workout.photoExpiresAt!),
-      'strengthSummary': workout.strength == null
-          ? null
-          : {
-              'bodyParts': workout.strength!.bodyParts,
-              'completedSetCount': workout.strength!.completedSetCount,
-              'totalVolumeKg': workout.strength!.totalVolumeKg,
-            },
+      'strengthSummary': workout.strength?.toFirestore(),
       'runningSummary': workout.running == null
           ? null
           : {
@@ -238,6 +233,183 @@ class WorkoutService {
       debugPrintStack(stackTrace: stackTrace);
       rethrow;
     }
+  }
+
+  Future<void> deleteCompletedWorkout(WorkoutRecord workout) async {
+    final user = _firebaseAuth.currentUser;
+    final workoutId = workout.id;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'user-not-found',
+        message: '현재 로그인한 사용자가 없습니다.',
+      );
+    }
+    if (workoutId == null || workout.userId != user.uid) {
+      throw StateError('삭제할 수 없는 운동 기록입니다.');
+    }
+
+    final workouts = _firestore
+        .collection('users')
+        .doc(user.uid)
+        .collection('workouts');
+    final latestSnapshot = await workouts
+        .orderBy('endedAt', descending: true)
+        .limit(2)
+        .get();
+    WorkoutRecord? latestRemainingWorkout;
+    for (final document in latestSnapshot.docs) {
+      if (document.id == workoutId ||
+          document.data()['status'] != 'completed') {
+        continue;
+      }
+      latestRemainingWorkout = WorkoutRecord.fromFirestore(
+        document.id,
+        document.data(),
+      );
+      if (latestRemainingWorkout != null) break;
+    }
+
+    final workoutRef = workouts.doc(workoutId);
+    final dateKey = _seoulDateKey(workout.endedAt);
+    final statsRef = _firestore
+        .collection('publicWorkoutStats')
+        .doc(user.uid)
+        .collection('days')
+        .doc(dateKey);
+    final publicWorkoutRef = _firestore
+        .collection('publicWorkoutActivities')
+        .doc(user.uid)
+        .collection('days')
+        .doc(dateKey)
+        .collection('workouts')
+        .doc(workoutId);
+    final activityRef = _firestore.collection('publicActivity').doc(user.uid);
+
+    await _firestore.runTransaction((transaction) async {
+      final workoutDocument = await transaction.get(workoutRef);
+      if (!workoutDocument.exists) {
+        throw StateError('이미 삭제되었거나 존재하지 않는 운동 기록입니다.');
+      }
+      final storedWorkout = WorkoutRecord.fromFirestore(
+        workoutDocument.id,
+        workoutDocument.data()!,
+      );
+      if (storedWorkout == null ||
+          storedWorkout.userId != user.uid ||
+          workoutDocument.data()!['status'] != 'completed') {
+        throw StateError('삭제할 수 없는 운동 기록입니다.');
+      }
+
+      final storedDateKey = _seoulDateKey(storedWorkout.endedAt);
+      if (storedDateKey != dateKey) {
+        throw StateError('운동 기록 날짜가 일치하지 않습니다.');
+      }
+
+      final statsDocument = await transaction.get(statsRef);
+      final activityDocument = await transaction.get(activityRef);
+
+      transaction.delete(workoutRef);
+      transaction.delete(publicWorkoutRef);
+
+      if (statsDocument.exists) {
+        final data = statsDocument.data()!;
+        final after = WorkoutStatsAfterDeletion.calculate(
+          workoutCount: (data['workoutCount'] as num?)?.toInt() ?? 0,
+          durationSeconds: (data['durationSeconds'] as num?)?.toInt() ?? 0,
+          strengthVolumeKg: (data['strengthVolumeKg'] as num?)?.toDouble() ?? 0,
+          runningDistanceMeters:
+              (data['runningDistanceMeters'] as num?)?.toDouble() ?? 0,
+          removedDurationSeconds: storedWorkout.durationSeconds,
+          removedStrengthVolumeKg: storedWorkout.strength?.totalVolumeKg ?? 0,
+          removedRunningDistanceMeters:
+              storedWorkout.running?.distanceMeters ?? 0,
+        );
+        if (after.isEmpty) {
+          transaction.delete(statsRef);
+        } else {
+          transaction.update(statsRef, {
+            'workoutCount': after.workoutCount,
+            'durationSeconds': after.durationSeconds,
+            'strengthVolumeKg': after.strengthVolumeKg,
+            'runningDistanceMeters': after.runningDistanceMeters,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      }
+
+      final activityData = activityDocument.data();
+      final activityEndedAt = activityData?['endedAt'];
+      final isDeletedLatest =
+          activityData?['status'] != 'workingOut' &&
+          activityEndedAt is Timestamp &&
+          activityEndedAt.millisecondsSinceEpoch ==
+              Timestamp.fromDate(storedWorkout.endedAt).millisecondsSinceEpoch;
+      if (activityDocument.exists && isDeletedLatest) {
+        if (latestRemainingWorkout == null) {
+          transaction.update(activityRef, {
+            'status': 'idle',
+            'endedAt': null,
+            'durationSeconds': null,
+            'photoUrl': null,
+            'photoCreatedAt': null,
+            'photoExpiresAt': null,
+            'lastWorkoutAt': null,
+            'strengthSummary': null,
+            'runningSummary': null,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        } else {
+          transaction.update(
+            activityRef,
+            _publicActivityForWorkout(user.uid, latestRemainingWorkout),
+          );
+        }
+      }
+    });
+  }
+
+  static String _seoulDateKey(DateTime value) {
+    final seoul = value.toUtc().add(const Duration(hours: 9));
+    return '${seoul.year.toString().padLeft(4, '0')}-'
+        '${seoul.month.toString().padLeft(2, '0')}-'
+        '${seoul.day.toString().padLeft(2, '0')}';
+  }
+
+  static Map<String, dynamic> _publicActivityForWorkout(
+    String uid,
+    WorkoutRecord workout,
+  ) {
+    return {
+      'uid': uid,
+      'status': 'completed',
+      'workoutType': workout.type,
+      'startedAt': Timestamp.fromDate(workout.startedAt),
+      'endedAt': Timestamp.fromDate(workout.endedAt),
+      'durationSeconds': workout.durationSeconds,
+      'photoUrl': workout.validPhotoUrl,
+      'photoCreatedAt': workout.photoCreatedAt == null
+          ? null
+          : Timestamp.fromDate(workout.photoCreatedAt!),
+      'photoExpiresAt': workout.photoExpiresAt == null
+          ? null
+          : Timestamp.fromDate(workout.photoExpiresAt!),
+      'lastWorkoutAt': Timestamp.fromDate(workout.endedAt),
+      'strengthSummary': workout.strength == null
+          ? null
+          : {
+              'bodyParts': workout.strength!.bodyParts,
+              'completedSetCount': workout.strength!.completedSetCount,
+              'totalVolumeKg': workout.strength!.totalVolumeKg,
+            },
+      'runningSummary': workout.running == null
+          ? null
+          : {
+              'distanceMeters': workout.running!.distanceMeters,
+              'averagePaceSecondsPerKm':
+                  workout.running!.averagePaceSecondsPerKm,
+            },
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
   }
 
   Stream<List<WorkoutRecord>> watchCompletedWorkouts() {

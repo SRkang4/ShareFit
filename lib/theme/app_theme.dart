@@ -6,8 +6,8 @@ class AppTheme {
   static ThemeData light(AppAccentColor accent) => _build(
     accent: accent,
     brightness: Brightness.light,
-    scaffold: Colors.white,
-    surface: const Color(0xFFF4F5F7),
+    scaffold: const Color(0xFFF5F5F7),
+    surface: const Color(0xFFEFEFF4),
     card: Colors.white,
   );
 
@@ -53,6 +53,13 @@ class AppTheme {
       scaffoldBackgroundColor: scaffold,
       canvasColor: scaffold,
       cardColor: surface,
+      cardTheme: CardThemeData(
+        color: card,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
       dialogTheme: DialogThemeData(
         backgroundColor: card,
         surfaceTintColor: Colors.transparent,

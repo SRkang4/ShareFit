@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/workout_record.dart';
 import '../theme/app_theme.dart';
+import 'sharefit_ui.dart';
 
 class WorkoutHistoryCard extends StatefulWidget {
   const WorkoutHistoryCard({
@@ -53,13 +54,9 @@ class _WorkoutHistoryCardState extends State<WorkoutHistoryCard>
     return AnimatedSize(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOut,
-      child: Container(
+      child: ShareFitCard(
         margin: const EdgeInsets.only(bottom: 14),
         padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          color: colors.surfaceContainer,
-          borderRadius: BorderRadius.circular(28),
-        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -143,9 +140,9 @@ class _WorkoutHistoryCardState extends State<WorkoutHistoryCard>
               ],
             ),
             if (isStrength && _expanded) ...[
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(vertical: 18),
-                child: Divider(height: 1, color: Color(0xFFD8DCE3)),
+                child: Divider(height: 1, color: colors.outlineVariant),
               ),
               ...?strength?.exercises.map(_buildExercise),
             ],

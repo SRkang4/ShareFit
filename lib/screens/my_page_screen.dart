@@ -17,7 +17,9 @@ import '../services/workout_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/profile_card_theme.dart';
 import '../utils/experience_formatter.dart';
+import '../widgets/sharefit_sliding_segmented_control.dart';
 import '../widgets/workout_history_card.dart';
+import '../widgets/sharefit_ui.dart';
 import 'settings_screen.dart';
 
 class MyPageScreen extends StatefulWidget {
@@ -42,6 +44,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
   DateTime? experienceStartDate;
   bool isLoadingProfile = true;
   bool isPro = false;
+  int selectedStatsCategory = 0;
   ProfileCustomization profileCustomization = ProfileCustomization.defaults;
   File? profileImageFile;
   late final Stream<List<WorkoutRecord>> _workoutsStream;
@@ -122,21 +125,41 @@ class _MyPageScreenState extends State<MyPageScreen> {
                 !snapshot.hasData;
 
             return ListView(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+              padding: const EdgeInsets.fromLTRB(20, 45, 20, 148),
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Text(
-                        '마이',
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w900,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '마이',
+                            style: Theme.of(context).textTheme.headlineLarge
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurface,
+                                  fontSize: 41,
+                                  height: 1.08,
+                                  letterSpacing: -1.4,
+                                ),
+                          ),
+                          const SizedBox(height: 9),
+                          Text(
+                            '나의 운동 기록과 변화를 확인해보세요.',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ],
                       ),
                     ),
-
+                    const SizedBox(width: 12),
                     IconButton(
                       onPressed: () {
                         Navigator.push(
@@ -151,7 +174,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
                   ],
                 ),
 
-                const SizedBox(height: 24),
+                const SizedBox(height: 32),
 
                 _buildProfileCard(),
 
@@ -789,12 +812,8 @@ class _MyPageScreenState extends State<MyPageScreen> {
     bool isLoading,
   ) {
     final summary = _calculateWorkoutSummary(workouts);
-    return Container(
+    return ShareFitCard(
       padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(28),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -971,56 +990,69 @@ class _MyPageScreenState extends State<MyPageScreen> {
     return StreamBuilder<AdvancedStats>(
       stream: _advancedStatsStream,
       builder: (context, snapshot) {
-        final background = Theme.of(context).colorScheme.surfaceContainer;
-        return Container(
-          padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(28),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '고급 통계',
-                style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '통계',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontSize: 24),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              '${displayedWorkoutMonth.year}년 ${displayedWorkoutMonth.month}월과 최근 6개월 분석',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
-              const SizedBox(height: 4),
-              Text(
-                '${displayedWorkoutMonth.year}년 ${displayedWorkoutMonth.month}월과 최근 6개월 분석',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 18),
-              if (snapshot.connectionState == ConnectionState.waiting &&
-                  !snapshot.hasData)
-                const Center(
+            ),
+            const SizedBox(height: 16),
+            ShareFitSlidingSegmentedControl(
+              labels: const ['헬스', '러닝'],
+              selectedIndex: selectedStatsCategory,
+              unselectedForegroundColor: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant,
+              onChanged: (index) {
+                setState(() {
+                  selectedStatsCategory = index;
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                !snapshot.hasData)
+              const ShareFitCard(
+                child: Center(
                   child: Padding(
                     padding: EdgeInsets.symmetric(vertical: 36),
                     child: CircularProgressIndicator(strokeWidth: 2.5),
                   ),
-                )
-              else if (snapshot.hasError || !snapshot.hasData)
-                Padding(
+                ),
+              )
+            else if (snapshot.hasError || !snapshot.hasData)
+              ShareFitCard(
+                child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 18),
                   child: Text(
-                    '고급 통계를 불러오지 못했어요.',
+                    '통계를 불러오지 못했어요.',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                )
-              else ...[
-                _buildStrengthAdvancedStats(snapshot.data!),
-                const SizedBox(height: 14),
-                _buildRunningAdvancedStats(snapshot.data!),
-              ],
-            ],
-          ),
+                ),
+              )
+            else
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeOutCubic,
+                child: selectedStatsCategory == 0
+                    ? _buildStrengthAdvancedStats(snapshot.data!)
+                    : _buildRunningAdvancedStats(snapshot.data!),
+              ),
+          ],
         );
       },
     );
@@ -1032,106 +1064,112 @@ class _MyPageScreenState extends State<MyPageScreen> {
       0,
       math.max,
     );
-    return _AdvancedSection(
-      icon: Icons.fitness_center_rounded,
-      title: '헬스',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _AdvancedMetric(
-            title: '${stats.selectedMonth.month}월 총 볼륨',
-            value: '${_formatNumber(selected.strengthVolumeKg)}kg',
-          ),
-          const SizedBox(height: 18),
-          const _AdvancedLabel('부위별 볼륨'),
-          const SizedBox(height: 10),
-          for (final part in AdvancedStatsService.bodyParts)
-            _BodyPartVolumeRow(
-              label: part,
-              value: stats.bodyPartVolumeKg[part] ?? 0,
-              maxValue: maxBodyPartVolume,
-            ),
-          if (stats.unassignedStrengthVolumeKg > 0) ...[
-            const SizedBox(height: 4),
-            Text(
-              '복합/미분류 ${_formatNumber(stats.unassignedStrengthVolumeKg)}kg',
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
+    return Column(
+      key: const ValueKey('strength-stats'),
+      children: [
+        _AdvancedTrendCard(
+          icon: Icons.fitness_center_rounded,
+          title: '월별 총 볼륨',
+          value: '${_formatNumber(selected.strengthVolumeKg)}kg',
+          description: '최근 6개월 헬스 볼륨',
+          months: stats.months,
+          values: stats.months
+              .map<double?>((month) => month.strengthVolumeKg)
+              .toList(),
+          chartType: _TrendChartType.bars,
+        ),
+        const SizedBox(height: 14),
+        ShareFitCard(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _AdvancedCardHeader(
+                icon: Icons.accessibility_new_rounded,
+                title: '부위별 볼륨',
               ),
-            ),
-          ],
-          const SizedBox(height: 18),
-          const _AdvancedLabel('최근 6개월 월별 볼륨'),
-          const SizedBox(height: 10),
-          _MonthlyTrendChart(
-            months: stats.months,
-            values: stats.months
-                .map<double?>((month) => month.strengthVolumeKg)
-                .toList(),
+              const SizedBox(height: 5),
+              Text(
+                '${stats.selectedMonth.month}월 부위별 기록',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 18),
+              for (final part in AdvancedStatsService.bodyParts)
+                _BodyPartVolumeRow(
+                  label: part,
+                  value: stats.bodyPartVolumeKg[part] ?? 0,
+                  maxValue: maxBodyPartVolume,
+                ),
+              if (stats.unassignedStrengthVolumeKg > 0) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '복합/미분류 ${_formatNumber(stats.unassignedStrengthVolumeKg)}kg',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _buildRunningAdvancedStats(AdvancedStats stats) {
     final selected = stats.selectedMonthStats;
-    return _AdvancedSection(
-      icon: Icons.directions_run_rounded,
-      title: '러닝',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _AdvancedMetric(
-                  title: '${stats.selectedMonth.month}월 총 거리',
-                  value:
-                      '${(selected.runningDistanceMeters / 1000).toStringAsFixed(1)}km',
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _AdvancedMetric(
-                  title: '${stats.selectedMonth.month}월 평균 페이스',
-                  value: _formatAdvancedPace(selected.averagePaceSecondsPerKm),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          const _AdvancedLabel('최근 6개월 월별 거리'),
-          const SizedBox(height: 10),
-          _MonthlyTrendChart(
-            months: stats.months,
-            values: stats.months
-                .map<double?>((month) => month.runningDistanceMeters)
-                .toList(),
-          ),
-          const SizedBox(height: 18),
-          const _AdvancedLabel('최근 6개월 평균 페이스'),
-          const SizedBox(height: 10),
-          _MonthlyTrendChart(
-            months: stats.months,
-            values: stats.months
-                .map<double?>((month) => month.averagePaceSecondsPerKm)
-                .toList(),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '페이스는 낮을수록 빨라요.',
-            style: TextStyle(
-              fontSize: 11,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
+    return Column(
+      key: const ValueKey('running-stats'),
+      children: [
+        _AdvancedTrendCard(
+          icon: Icons.route_rounded,
+          title: '월별 거리',
+          value:
+              '${(selected.runningDistanceMeters / 1000).toStringAsFixed(1)}km',
+          description: '최근 6개월 러닝 거리',
+          months: stats.months,
+          values: stats.months
+              .map<double?>((month) => month.runningDistanceMeters)
+              .toList(),
+          chartType: _TrendChartType.bars,
+        ),
+        const SizedBox(height: 14),
+        _AdvancedTrendCard(
+          icon: Icons.speed_rounded,
+          title: '평균 페이스',
+          value: _formatAdvancedPace(selected.averagePaceSecondsPerKm),
+          description: '최근 6개월 변화 · 낮을수록 빨라요',
+          months: stats.months,
+          values: stats.months
+              .map<double?>((month) => month.averagePaceSecondsPerKm)
+              .toList(),
+          chartType: _TrendChartType.line,
+        ),
+        const SizedBox(height: 14),
+        _AdvancedTrendCard(
+          icon: Icons.timer_outlined,
+          title: '러닝 시간',
+          value: _formatRunningDuration(selected.runningDurationSeconds),
+          description: '최근 6개월 러닝 시간',
+          months: stats.months,
+          values: stats.months
+              .map<double?>((month) => month.runningDurationSeconds.toDouble())
+              .toList(),
+          chartType: _TrendChartType.bars,
+        ),
+      ],
     );
+  }
+
+  String _formatRunningDuration(int durationSeconds) {
+    final hours = durationSeconds ~/ 3600;
+    final minutes = (durationSeconds % 3600) ~/ 60;
+    if (hours > 0) return '$hours시간 $minutes분';
+    return '$minutes분';
   }
 
   String _formatAdvancedPace(double? secondsPerKm) {
@@ -1163,12 +1201,8 @@ class _MyPageScreenState extends State<MyPageScreen> {
     final isCurrentMonth =
         now.year == monthStart.year && now.month == monthStart.month;
 
-    return Container(
+    return ShareFitCard(
       padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(28),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1598,77 +1632,91 @@ class _CustomizationChoice extends StatelessWidget {
   }
 }
 
-class _AdvancedSection extends StatelessWidget {
-  const _AdvancedSection({
+class _AdvancedTrendCard extends StatelessWidget {
+  const _AdvancedTrendCard({
     required this.icon,
     required this.title,
-    required this.child,
+    required this.value,
+    required this.description,
+    required this.months,
+    required this.values,
+    required this.chartType,
   });
 
   final IconData icon;
   final String title;
-  final Widget child;
+  final String value;
+  final String description;
+  final List<MonthlyAdvancedStats> months;
+  final List<double?> values;
+  final _TrendChartType chartType;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(20),
-      ),
+    return ShareFitCard(
+      padding: const EdgeInsets.all(22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 20, color: colors.primary),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                ),
+          _AdvancedCardHeader(icon: icon, title: title),
+          const SizedBox(height: 14),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                fontSize: 30,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.8,
               ),
-            ],
+            ),
           ),
-          const SizedBox(height: 16),
-          child,
+          const SizedBox(height: 5),
+          Text(
+            description,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 22),
+          _MonthlyTrendChart(
+            months: months,
+            values: values,
+            chartType: chartType,
+          ),
         ],
       ),
     );
   }
 }
 
-class _AdvancedMetric extends StatelessWidget {
-  const _AdvancedMetric({required this.title, required this.value});
+class _AdvancedCardHeader extends StatelessWidget {
+  const _AdvancedCardHeader({required this.icon, required this.title});
 
+  final IconData icon;
   final String title;
-  final String value;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final colors = Theme.of(context).colorScheme;
+    return Row(
       children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: colors.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: Icon(icon, size: 19, color: colors.primary),
+        ),
+        const SizedBox(width: 10),
         Text(
           title,
-          style: TextStyle(
-            fontSize: 12,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontSize: 17,
             fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 5),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Text(
-            value,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
           ),
         ),
       ],
@@ -1752,11 +1800,18 @@ class _BodyPartVolumeRow extends StatelessWidget {
   }
 }
 
+enum _TrendChartType { line, bars }
+
 class _MonthlyTrendChart extends StatelessWidget {
-  const _MonthlyTrendChart({required this.months, required this.values});
+  const _MonthlyTrendChart({
+    required this.months,
+    required this.values,
+    required this.chartType,
+  });
 
   final List<MonthlyAdvancedStats> months;
   final List<double?> values;
+  final _TrendChartType chartType;
 
   @override
   Widget build(BuildContext context) {
@@ -1769,8 +1824,9 @@ class _MonthlyTrendChart extends StatelessWidget {
           child: CustomPaint(
             painter: _TrendPainter(
               values: values,
+              chartType: chartType,
               lineColor: colors.primary,
-              gridColor: colors.outline.withValues(alpha: 0.45),
+              gridColor: colors.outline.withValues(alpha: 0.24),
               emptyColor: colors.onSurfaceVariant.withValues(alpha: 0.45),
             ),
           ),
@@ -1781,7 +1837,7 @@ class _MonthlyTrendChart extends StatelessWidget {
             for (final month in months)
               Expanded(
                 child: Text(
-                  '${month.month}월',
+                  '${month.month.month}월',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 10,
@@ -1800,12 +1856,14 @@ class _MonthlyTrendChart extends StatelessWidget {
 class _TrendPainter extends CustomPainter {
   const _TrendPainter({
     required this.values,
+    required this.chartType,
     required this.lineColor,
     required this.gridColor,
     required this.emptyColor,
   });
 
   final List<double?> values;
+  final _TrendChartType chartType;
   final Color lineColor;
   final Color gridColor;
   final Color emptyColor;
@@ -1816,10 +1874,11 @@ class _TrendPainter extends CustomPainter {
     final gridPaint = Paint()
       ..color = gridColor
       ..strokeWidth = 1;
-    for (var index = 0; index < 3; index++) {
-      final y = size.height * index / 2;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
-    }
+    canvas.drawLine(
+      Offset(0, size.height - 1),
+      Offset(size.width, size.height - 1),
+      gridPaint,
+    );
 
     final validValues = values.whereType<double>().where(
       (value) => value.isFinite,
@@ -1843,6 +1902,29 @@ class _TrendPainter extends CustomPainter {
           (size.height - textPainter.height) / 2,
         ),
       );
+      return;
+    }
+
+    if (chartType == _TrendChartType.bars) {
+      final maximum = validValues.reduce(math.max);
+      final slotWidth = size.width / values.length;
+      final barWidth = math.min(24.0, slotWidth * 0.42);
+      final barPaint = Paint()
+        ..color = lineColor
+        ..style = PaintingStyle.fill;
+      for (var index = 0; index < values.length; index++) {
+        final value = values[index];
+        if (value == null || !value.isFinite) continue;
+        final barHeight = maximum <= 0
+            ? 3.0
+            : ((size.height - 8) * value / maximum).clamp(3.0, size.height - 8);
+        final left = (slotWidth * index) + ((slotWidth - barWidth) / 2);
+        final rect = RRect.fromRectAndRadius(
+          Rect.fromLTWH(left, size.height - barHeight, barWidth, barHeight),
+          const Radius.circular(7),
+        );
+        canvas.drawRRect(rect, barPaint);
+      }
       return;
     }
 
@@ -1889,6 +1971,7 @@ class _TrendPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _TrendPainter oldDelegate) =>
       oldDelegate.values != values ||
+      oldDelegate.chartType != chartType ||
       oldDelegate.lineColor != lineColor ||
       oldDelegate.gridColor != gridColor;
 }

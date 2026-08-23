@@ -68,6 +68,30 @@ async function main() {
           durationSeconds: 600,
           updatedAt: Timestamp.now(),
         });
+      await firestore
+        .doc(
+          'publicWorkoutActivities/owner/days/2026-08-13/workouts/legacy-workout',
+        )
+        .set({
+          uid: 'owner',
+          workoutId: 'legacy-workout',
+          dateKey: '2026-08-13',
+          type: 'strength',
+          startedAt: Timestamp.now(),
+          endedAt: Timestamp.now(),
+          durationSeconds: 600,
+          photoUrl: null,
+          photoCreatedAt: null,
+          photoExpiresAt: null,
+          strengthSummary: {
+            bodyParts: ['등'],
+            completedSetCount: 1,
+            totalVolumeKg: 500,
+          },
+          runningSummary: null,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        });
     });
 
     const owner = testEnvironment.authenticatedContext('owner').firestore();
@@ -120,6 +144,18 @@ async function main() {
         lastSentAt: Timestamp.now(),
       }),
     );
+    await assertSucceeds(
+      owner
+        .doc(
+          'publicWorkoutActivities/owner/days/2026-08-13/workouts/legacy-workout',
+        )
+        .update({
+          photoUrl: 'https://example.com/legacy-photo.jpg',
+          photoCreatedAt: Timestamp.now(),
+          photoExpiresAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        }),
+    );
 
     await assertSucceeds(owner.doc(path).set(valid));
     await assertSucceeds(friend.doc(path).get());
@@ -143,6 +179,17 @@ async function main() {
         runningDistanceMeters: -1,
       }),
     );
+    await assertSucceeds(
+      owner.doc(path).set({
+        ...valid,
+        workoutCount: 1,
+        durationSeconds: 1200,
+        strengthVolumeKg: 2400,
+        runningDistanceMeters: 0,
+      }),
+    );
+    await assertFails(stranger.doc(path).delete());
+    await assertSucceeds(owner.doc(path).delete());
 
     const proUser = testEnvironment
       .authenticatedContext('pro-user')
@@ -164,6 +211,29 @@ async function main() {
     const freeUser = testEnvironment
       .authenticatedContext('free-user')
       .firestore();
+    await assertSucceeds(
+      freeUser.doc('users/free-user').update({
+        notificationPreferences: {
+          wakeUp: false,
+          friendRequest: true,
+          friendAccepted: false,
+        },
+      }),
+    );
+    await assertFails(
+      freeUser.doc('users/free-user').update({
+        notificationPreferences: { wakeUp: true },
+      }),
+    );
+    await assertFails(
+      proUser.doc('users/free-user').update({
+        notificationPreferences: {
+          wakeUp: true,
+          friendRequest: true,
+          friendAccepted: true,
+        },
+      }),
+    );
     const freeBatch = freeUser.batch();
     freeBatch.update(freeUser.doc('users/free-user'), {
       profileCustomization: {
@@ -188,6 +258,21 @@ async function main() {
 
     const publicWorkoutPath =
       'publicWorkoutActivities/owner/days/2026-08-14/workouts/workout-1';
+    const exercises = [
+      {
+        name: '벤치프레스',
+        sets: [
+          { weightKg: 80, reps: 10 },
+          { weightKg: 80, reps: 8 },
+        ],
+      },
+    ];
+    const strength = {
+      bodyParts: ['가슴'],
+      completedSetCount: 2,
+      totalVolumeKg: 1440,
+      exercises,
+    };
     const publicWorkout = {
       uid: 'owner',
       workoutId: 'workout-1',
@@ -199,18 +284,31 @@ async function main() {
       photoUrl: null,
       photoCreatedAt: null,
       photoExpiresAt: null,
-      strengthSummary: {
-        bodyParts: ['가슴'],
-        completedSetCount: 3,
-        totalVolumeKg: 2400,
-      },
+      strengthSummary: strength,
       runningSummary: null,
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     };
-    await assertSucceeds(owner.doc(publicWorkoutPath).set(publicWorkout));
+    const privateWorkoutPath = 'users/owner/workouts/workout-1';
+    const publicWorkoutBatch = owner.batch();
+    publicWorkoutBatch.set(owner.doc(privateWorkoutPath), {
+      userId: 'owner',
+      type: 'strength',
+      status: 'completed',
+      startedAt: publicWorkout.startedAt,
+      endedAt: publicWorkout.endedAt,
+      durationSeconds: publicWorkout.durationSeconds,
+      photoUrl: null,
+      photoCreatedAt: null,
+      photoExpiresAt: null,
+      strength,
+      createdAt: Timestamp.now(),
+    });
+    publicWorkoutBatch.set(owner.doc(publicWorkoutPath), publicWorkout);
+    await assertSucceeds(publicWorkoutBatch.commit());
     await assertSucceeds(friend.doc(publicWorkoutPath).get());
     await assertFails(stranger.doc(publicWorkoutPath).get());
+    await assertFails(friend.doc(privateWorkoutPath).get());
     await assertFails(
       friend.doc(publicWorkoutPath).update({ photoUrl: 'https://bad.example' }),
     );
@@ -222,6 +320,29 @@ async function main() {
         updatedAt: Timestamp.now(),
       }),
     );
+    const mismatchedPrivatePath = 'users/owner/workouts/workout-2';
+    const mismatchedPublicPath =
+      'publicWorkoutActivities/owner/days/2026-08-14/workouts/workout-2';
+    const mismatchedBatch = owner.batch();
+    mismatchedBatch.set(owner.doc(mismatchedPrivatePath), {
+      userId: 'owner',
+      type: 'strength',
+      status: 'completed',
+      startedAt: publicWorkout.startedAt,
+      endedAt: publicWorkout.endedAt,
+      durationSeconds: publicWorkout.durationSeconds,
+      strength,
+      createdAt: Timestamp.now(),
+    });
+    mismatchedBatch.set(owner.doc(mismatchedPublicPath), {
+      ...publicWorkout,
+      workoutId: 'workout-2',
+      strengthSummary: {
+        ...strength,
+        exercises: [{ name: '조작된 종목', sets: [] }],
+      },
+    });
+    await assertFails(mismatchedBatch.commit());
     await assertSucceeds(
       owner.doc('publicWorkoutStats/owner/days/2026-08-13').set({
         uid: 'owner',

@@ -10,6 +10,8 @@ import '../services/auth_service.dart';
 import '../services/friend_service.dart';
 import '../theme/profile_card_theme.dart';
 import '../utils/experience_formatter.dart';
+import '../widgets/sharefit_ui.dart';
+import '../widgets/sharefit_sliding_segmented_control.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
@@ -331,24 +333,38 @@ class _FriendsScreenState extends State<FriendsScreen> {
                             child: ElevatedButton(
                               onPressed: isDeleting ? null : remove,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFFFF5A76),
-                                foregroundColor: Colors.white,
-                                disabledBackgroundColor: const Color(
-                                  0xFFFF5A76,
-                                ),
-                                disabledForegroundColor: Colors.white,
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHigh,
+                                foregroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.error.withValues(alpha: 0.78),
+                                disabledBackgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHigh,
+                                disabledForegroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.error.withValues(alpha: 0.45),
                                 elevation: 0,
+                                side: BorderSide(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.outlineVariant,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(18),
                                 ),
                               ),
                               child: isDeleting
-                                  ? const SizedBox(
+                                  ? SizedBox(
                                       width: 18,
                                       height: 18,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2.3,
-                                        color: Colors.white,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .error
+                                            .withValues(alpha: 0.78),
                                       ),
                                     )
                                   : const Text(
@@ -463,46 +479,69 @@ class _FriendsScreenState extends State<FriendsScreen> {
     return Scaffold(
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+          padding: const EdgeInsets.fromLTRB(20, 45, 20, 148),
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
                     '친구',
-                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900),
+                    style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontSize: 41,
+                      height: 1.08,
+                      letterSpacing: -1.4,
+                    ),
                   ),
                 ),
-                GestureDetector(
-                  onTap: isLimitReached ? null : showAddFriendDialog,
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: isLimitReached
-                          ? const Color(0xFFE4E7EC)
-                          : pointColor,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.person_add_alt_1_rounded,
-                      color: isLimitReached
-                          ? const Color(0xFF999999)
-                          : Colors.white,
+                Transform.translate(
+                  offset: const Offset(0, 20),
+                  child: GestureDetector(
+                    onTap: isLimitReached ? null : showAddFriendDialog,
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: isLimitReached
+                            ? Theme.of(context).colorScheme.surfaceContainer
+                            : pointColor,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.person_add_alt_1_rounded,
+                        color: isLimitReached
+                            ? Theme.of(context).colorScheme.onSurfaceVariant
+                            : Colors.white,
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 9),
+            Text(
+              '친구와 함께 운동하고 서로의 활동을 확인해보세요.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 32),
 
             _buildTabSelector(receivedRequests.isNotEmpty),
 
             const SizedBox(height: 24),
 
-            if (selectedTab == '내 친구')
-              _buildMyFriendsTab(friends, isLimitReached, isPro, hasError)
-            else
+            if (selectedTab == '내 친구') ...[
+              Text(
+                isPro
+                    ? '${friends.length}명과 함께 운동하고 있어요.'
+                    : '${friends.length} / $maxFreeFriends 친구 사용 중',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 14),
+              _buildMyFriendsTab(friends, isLimitReached, isPro, hasError),
+            ] else
               _buildFriendRequestsTab(receivedRequests, sentRequests, hasError),
           ],
         ),
@@ -511,37 +550,17 @@ class _FriendsScreenState extends State<FriendsScreen> {
   }
 
   Widget _buildTabSelector(bool hasReceivedRequests) {
-    return Container(
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          _FriendTabButton(
-            title: '내 친구',
-            selected: selectedTab == '내 친구',
-            pointColor: pointColor,
-            onTap: () {
-              setState(() {
-                selectedTab = '내 친구';
-              });
-            },
-          ),
-          _FriendTabButton(
-            title: '친구 요청',
-            selected: selectedTab == '친구 요청',
-            pointColor: pointColor,
-            showBadge: hasReceivedRequests,
-            onTap: () {
-              setState(() {
-                selectedTab = '친구 요청';
-              });
-            },
-          ),
-        ],
-      ),
+    return ShareFitSlidingSegmentedControl(
+      labels: const ['내 친구', '친구 요청'],
+      selectedIndex: selectedTab == '내 친구' ? 0 : 1,
+      badgedIndices: hasReceivedRequests ? const {1} : const {},
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+      borderColor: Theme.of(context).colorScheme.outlineVariant,
+      onChanged: (index) {
+        setState(() {
+          selectedTab = index == 0 ? '내 친구' : '친구 요청';
+        });
+      },
     );
   }
 
@@ -554,14 +573,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          isPro
-              ? '${friends.length}명 친구 사용 중'
-              : '${friends.length} / $maxFreeFriends 친구 사용 중',
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 18),
-
         if (isLimitReached)
           Container(
             margin: const EdgeInsets.only(bottom: 18),
@@ -667,12 +678,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
   }
 
   Widget _buildFriendCodeCard() {
-    return Container(
+    return ShareFitCard(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(24),
-      ),
       child: Row(
         children: [
           const Text(
@@ -704,7 +711,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
   Widget _buildRequestSectionTitle(String title, int count) {
     return Text(
       '$title ($count)',
-      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
     );
   }
 
@@ -768,17 +775,15 @@ class _EmptyFriendsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Text(
-        message,
-        textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+      child: ShareFitCard(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
       ),
     );
   }
@@ -827,79 +832,6 @@ class _SearchResultCard extends StatelessWidget {
   }
 }
 
-class _FriendTabButton extends StatelessWidget {
-  final String title;
-  final bool selected;
-  final Color pointColor;
-  final VoidCallback onTap;
-  final bool showBadge;
-
-  const _FriendTabButton({
-    required this.title,
-    required this.selected,
-    required this.pointColor,
-    required this.onTap,
-    this.showBadge = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          height: 44,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? pointColor : Colors.transparent,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Center(
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: selected
-                        ? Colors.white
-                        : Theme.of(context).colorScheme.onSurface,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                if (showBadge)
-                  Positioned(
-                    top: -7,
-                    right: -17,
-                    child: Container(
-                      width: 14,
-                      height: 14,
-                      alignment: Alignment.center,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFFF3B4F),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Text(
-                        '!',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          height: 1,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _FriendCard extends StatelessWidget {
   final FriendData friend;
   final VoidCallback onDelete;
@@ -913,24 +845,42 @@ class _FriendCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dangerColor = Theme.of(
+      context,
+    ).colorScheme.error.withValues(alpha: 0.72);
     return _BaseUserCard(
       name: friend.displayName,
       career: friend.career,
       customization: friend.customization,
       trailing: TextButton(
         onPressed: isProcessing ? null : onDelete,
+        style: TextButton.styleFrom(
+          foregroundColor: dangerColor,
+          visualDensity: VisualDensity.compact,
+        ),
         child: isProcessing
             ? const SizedBox(
                 width: 16,
                 height: 16,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            : const Text(
-                '삭제',
-                style: TextStyle(
-                  color: Color(0xFFFF5A76),
-                  fontWeight: FontWeight.w800,
-                ),
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.delete_outline_rounded,
+                    size: 16,
+                    color: dangerColor,
+                  ),
+                  const SizedBox(width: 3),
+                  Text(
+                    '삭제',
+                    style: TextStyle(
+                      color: dangerColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
       ),
     );
@@ -1073,7 +1023,7 @@ class _BaseUserCard extends StatelessWidget {
                   name,
                   style: TextStyle(
                     fontSize: 17,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                     color: palette.foreground,
                   ),
                 ),
@@ -1084,7 +1034,7 @@ class _BaseUserCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       color: palette.accent,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
@@ -1093,7 +1043,7 @@ class _BaseUserCard extends StatelessWidget {
                   career,
                   style: TextStyle(
                     fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w400,
                     color: palette.secondaryForeground,
                   ),
                 ),

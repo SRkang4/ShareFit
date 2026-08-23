@@ -1,13 +1,15 @@
 import {getApps, initializeApp} from "firebase-admin/app";
 import {FieldValue, getFirestore, Timestamp} from "firebase-admin/firestore";
 import {getMessaging, Message} from "firebase-admin/messaging";
-import {logger} from "firebase-functions";
+import * as logger from "firebase-functions/logger";
 import {onCall, HttpsError} from "firebase-functions/v2/https";
 import {onDocumentCreated, onDocumentUpdated} from "firebase-functions/v2/firestore";
 import {createHash} from "node:crypto";
 
 import {
+  isNotificationEnabled,
   isWakeUpCooldownActive,
+  NotificationKind,
   shouldNotifyFriendAccepted,
   shouldNotifyFriendRequest,
   WAKE_UP_COOLDOWN_MS,
@@ -15,19 +17,28 @@ import {
 
 if (getApps().length === 0) initializeApp();
 
-const db = getFirestore();
-const messaging = getMessaging();
+let firestore: ReturnType<typeof getFirestore> | undefined;
+let messaging: ReturnType<typeof getMessaging> | undefined;
+
+function db(): ReturnType<typeof getFirestore> {
+  firestore ??= getFirestore();
+  return firestore;
+}
+
+function fcm(): ReturnType<typeof getMessaging> {
+  messaging ??= getMessaging();
+  return messaging;
+}
+
 const region = "asia-northeast3";
 const channelId = "sharefit_social_notifications";
-
-type NotificationKind = "wake_up" | "friend_request" | "friend_request_accepted";
 
 function eventDocumentId(kind: string, eventId: string): string {
   return `${kind}_${createHash("sha256").update(eventId).digest("hex")}`;
 }
 
 async function profileName(uid: string): Promise<string> {
-  const snapshot = await db.collection("publicProfiles").doc(uid).get();
+  const snapshot = await db().collection("publicProfiles").doc(uid).get();
   const name = snapshot.data()?.name;
   return typeof name === "string" && name.trim().length > 0 ? name.trim() : "친구";
 }
@@ -42,13 +53,18 @@ async function sendToUser(
   kind: NotificationKind,
   senderUid: string,
   body: string,
-): Promise<number> {
-  const tokensSnapshot = await db
-    .collection("users")
-    .doc(uid)
-    .collection("fcmTokens")
-    .limit(20)
-    .get();
+): Promise<number | null> {
+  const userRef = db().collection("users").doc(uid);
+  const userSnapshot = await userRef.get();
+  const preferences = userSnapshot.data()?.notificationPreferences;
+  if (!isNotificationEnabled(
+    kind,
+    preferences && typeof preferences === "object" ? preferences : undefined,
+  )) {
+    logger.info("사용자 설정에 따라 알림을 건너뜁니다.", {uid, kind});
+    return null;
+  }
+  const tokensSnapshot = await userRef.collection("fcmTokens").limit(20).get();
   const entries = tokensSnapshot.docs
     .map((document) => ({document, token: document.data().token}))
     .filter((entry): entry is {document: FirebaseFirestore.QueryDocumentSnapshot; token: string} =>
@@ -67,10 +83,10 @@ async function sendToUser(
       payload: {aps: {sound: "default"}},
     },
   };
-  const response = await messaging.sendEach(
+  const response = await fcm().sendEach(
     entries.map((entry) => ({...baseMessage, token: entry.token})),
   );
-  const cleanup = db.batch();
+  const cleanup = db().batch();
   let hasCleanup = false;
   response.responses.forEach((result, index) => {
     if (!result.success && isPermanentTokenError(result.error?.code)) {
@@ -83,8 +99,8 @@ async function sendToUser(
 }
 
 async function claimEvent(eventId: string): Promise<boolean> {
-  const ref = db.collection("notificationEvents").doc(eventId);
-  return db.runTransaction(async (transaction) => {
+  const ref = db().collection("notificationEvents").doc(eventId);
+  return db().runTransaction(async (transaction) => {
     if ((await transaction.get(ref)).exists) return false;
     transaction.create(ref, {createdAt: FieldValue.serverTimestamp()});
     return true;
@@ -92,7 +108,7 @@ async function claimEvent(eventId: string): Promise<boolean> {
 }
 
 async function releaseEvent(eventId: string): Promise<void> {
-  await db.collection("notificationEvents").doc(eventId).delete();
+  await db().collection("notificationEvents").doc(eventId).delete();
 }
 
 export const notifyFriendRequest = onDocumentCreated(
@@ -154,7 +170,7 @@ export const sendWakeUp = onCall({region}, async (request) => {
     throw new HttpsError("invalid-argument", "올바른 친구를 선택해주세요.");
   }
 
-  const friendship = await db
+  const friendship = await db()
     .collection("users")
     .doc(senderUid)
     .collection("friends")
@@ -164,21 +180,21 @@ export const sendWakeUp = onCall({region}, async (request) => {
     throw new HttpsError("permission-denied", "친구에게만 깨우기를 보낼 수 있습니다.");
   }
   const [senderProfile, targetProfile] = await Promise.all([
-    db.collection("publicProfiles").doc(senderUid).get(),
-    db.collection("publicProfiles").doc(targetUid).get(),
+    db().collection("publicProfiles").doc(senderUid).get(),
+    db().collection("publicProfiles").doc(targetUid).get(),
   ]);
   if (senderProfile.data()?.active !== true || targetProfile.data()?.active !== true) {
     throw new HttpsError("not-found", "사용 가능한 친구를 찾을 수 없습니다.");
   }
 
-  const cooldownRef = db
+  const cooldownRef = db()
     .collection("notificationCooldowns")
     .doc(senderUid)
     .collection("targets")
     .doc(targetUid);
-  const requestId = db.collection("notificationEvents").doc().id;
+  const requestId = db().collection("notificationEvents").doc().id;
   const now = Timestamp.now();
-  await db.runTransaction(async (transaction) => {
+  await db().runTransaction(async (transaction) => {
     const cooldown = await transaction.get(cooldownRef);
     const lastSentAt = cooldown.data()?.lastSentAt;
     const lastSentMillis = lastSentAt instanceof Timestamp ? lastSentAt.toMillis() : null;
@@ -203,10 +219,11 @@ export const sendWakeUp = onCall({region}, async (request) => {
       senderUid,
       `${senderName}님이 운동을 하자고 해요.`,
     );
+    if (sentCount === null) return {sent: false, suppressed: true};
     if (sentCount === 0) throw new HttpsError("not-found", "알림을 받을 기기가 없습니다.");
     return {sent: true};
   } catch (error) {
-    await db.runTransaction(async (transaction) => {
+    await db().runTransaction(async (transaction) => {
       const cooldown = await transaction.get(cooldownRef);
       if (cooldown.data()?.requestId === requestId) transaction.delete(cooldownRef);
     });

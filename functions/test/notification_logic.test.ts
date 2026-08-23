@@ -2,11 +2,23 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  isNotificationEnabled,
   isWakeUpCooldownActive,
   shouldNotifyFriendAccepted,
   shouldNotifyFriendRequest,
   WAKE_UP_COOLDOWN_MS,
 } from "../src/notification_logic";
+
+test("notification preferences default to enabled and only explicit false disables", () => {
+  assert.equal(isNotificationEnabled("wake_up", undefined), true);
+  assert.equal(isNotificationEnabled("friend_request", {}), true);
+  assert.equal(isNotificationEnabled("wake_up", {wakeUp: false}), false);
+  assert.equal(isNotificationEnabled("friend_request", {friendRequest: false}), false);
+  assert.equal(
+    isNotificationEnabled("friend_request_accepted", {friendAccepted: false}),
+    false,
+  );
+});
 
 test("pending friend request only", () => {
   assert.equal(shouldNotifyFriendRequest({status: "pending", fromUid: "a", toUid: "b"}), true);

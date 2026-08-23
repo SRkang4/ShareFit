@@ -12,7 +12,7 @@ import '../services/public_workout_activity_service.dart';
 import '../services/wake_up_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/profile_card_theme.dart';
-import '../widgets/section_title.dart';
+import '../widgets/sharefit_ui.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -219,56 +219,71 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+          padding: const EdgeInsets.fromLTRB(20, 45, 20, 120),
           children: [
             Text(
               'ShareFit',
-              style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800),
+              style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+                fontSize: 41,
+                height: 1.08,
+                letterSpacing: -1.4,
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 9),
             Text(
-              '친구들의 운동 상태를 확인해보세요.',
-              style: TextStyle(
-                fontSize: 15,
+              '친구들의 오늘 운동 상태를 한눈에 확인해보세요.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 36),
-            const SectionTitle(title: '현재 운동 중'),
-            const SizedBox(height: 16),
-            if (working.isEmpty)
-              const _EmptyHomeCard(message: '운동 중인 친구가 없어요.'),
-            ...working.map(
-              (friend) => _WorkingOutCard(
-                friend: friend,
-                activity: _activities[friend.uid]!,
-              ),
+            const SizedBox(height: 32),
+            _HomeStatusSectionCard(
+              title: '운동 중',
+              count: working.length,
+              children: [
+                if (working.isEmpty)
+                  const _EmptyHomeCard(message: '지금 운동 중인 친구가 없어요.'),
+                ...working.map(
+                  (friend) => _WorkingOutCard(
+                    friend: friend,
+                    activity: _activities[friend.uid]!,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 30),
-            const SectionTitle(title: '오늘 운동 완료'),
             const SizedBox(height: 16),
-            if (completed.isEmpty)
-              const _EmptyHomeCard(message: '운동 완료한 친구가 없어요.'),
-            ...completed.map((friend) {
-              return _CompletedWorkoutCard(
-                key: ValueKey(friend.uid),
-                friend: friend,
-                workouts: _todayWorkoutsFor(friend),
-              );
-            }),
-            const SizedBox(height: 30),
-            const SectionTitle(title: '오늘 운동 안 한 친구'),
+            _HomeStatusSectionCard(
+              title: '운동 완료',
+              count: completed.length,
+              children: [
+                if (completed.isEmpty)
+                  const _EmptyHomeCard(message: '오늘 운동을 마친 친구가 없어요.'),
+                ...completed.map(
+                  (friend) => _CompletedWorkoutCard(
+                    key: ValueKey(friend.uid),
+                    friend: friend,
+                    workouts: _todayWorkoutsFor(friend),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 16),
-            if (resting.isEmpty)
-              const _EmptyHomeCard(message: '오늘 운동 안 한 친구가 없어요.'),
-            ...resting.map(
-              (friend) => _RestingFriendCard(
-                friend: friend,
-                activity: _activities[friend.uid],
-                isSending: _sendingWakeUps.contains(friend.uid),
-                onWakeUp: () => _sendWakeUp(friend),
-              ),
+            _HomeStatusSectionCard(
+              title: '운동 안 한 친구',
+              count: resting.length,
+              children: [
+                if (resting.isEmpty)
+                  const _EmptyHomeCard(message: '오늘 아직 운동 기록이 없는 친구가 없어요.'),
+                ...resting.map(
+                  (friend) => _RestingFriendCard(
+                    friend: friend,
+                    activity: _activities[friend.uid],
+                    isSending: _sendingWakeUps.contains(friend.uid),
+                    onWakeUp: () => _sendWakeUp(friend),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -285,6 +300,64 @@ class _DefaultProfile extends StatelessWidget {
     backgroundColor: Color(0xFFE5E7EB),
     child: Icon(Icons.person_rounded, color: Color(0xFF9CA3AF), size: 30),
   );
+}
+
+class _HomeStatusSectionCard extends StatelessWidget {
+  const _HomeStatusSectionCard({
+    required this.title,
+    required this.count,
+    required this.children,
+  });
+
+  final String title;
+  final int count;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final accentColor = Theme.of(context).colorScheme.primary;
+    return ShareFitCard(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontSize: 21,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 11,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.11),
+                  borderRadius: BorderRadius.circular(100),
+                ),
+                child: Text(
+                  '$count명',
+                  style: TextStyle(
+                    color: accentColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          ...children,
+        ],
+      ),
+    );
+  }
 }
 
 class _WorkingOutCard extends StatelessWidget {
@@ -340,6 +413,7 @@ class _CompletedWorkoutCard extends StatefulWidget {
 
 class _CompletedWorkoutCardState extends State<_CompletedWorkoutCard> {
   final PageController _pageController = PageController();
+  final Set<String> _expandedWorkoutIds = {};
   int _page = 0;
 
   @override
@@ -349,6 +423,8 @@ class _CompletedWorkoutCardState extends State<_CompletedWorkoutCard> {
       _page = 0;
       if (_pageController.hasClients) _pageController.jumpToPage(0);
     }
+    final workoutIds = widget.workouts.map((workout) => workout.workoutId);
+    _expandedWorkoutIds.retainAll(workoutIds);
   }
 
   @override
@@ -359,72 +435,109 @@ class _CompletedWorkoutCardState extends State<_CompletedWorkoutCard> {
 
   @override
   Widget build(BuildContext context) {
-    final hasPhoto = widget.workouts.any(
-      (workout) => workout.validPhotoUrl != null,
-    );
+    final currentWorkout = widget.workouts[_page];
+    final hasPhoto = currentWorkout.validPhotoUrl != null;
     final pageHeight = hasPhoto ? 286.0 : 120.0;
-    return _BaseCard(
-      friend: widget.friend,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const _DefaultProfile(),
-              const SizedBox(width: 16),
-              Expanded(child: _FriendIdentity(friend: widget.friend)),
-              _pill(
-                '오늘 ${widget.workouts.length}회',
-                Theme.of(context).colorScheme.primary,
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Divider(height: 1, color: Theme.of(context).colorScheme.outline),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: pageHeight,
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: widget.workouts.length,
-              onPageChanged: (value) => setState(() => _page = value),
-              itemBuilder: (context, index) => _CompletedWorkoutPage(
-                key: ValueKey(widget.workouts[index].workoutId),
-                workout: widget.workouts[index],
-              ),
-            ),
-          ),
-          if (widget.workouts.length > 1) ...[
-            const SizedBox(height: 10),
+    final isStrength = currentWorkout.type == 'strength';
+    final isExpanded =
+        isStrength && _expandedWorkoutIds.contains(currentWorkout.workoutId);
+    void toggleExpanded() {
+      if (!isStrength) return;
+      setState(() {
+        if (!_expandedWorkoutIds.add(currentWorkout.workoutId)) {
+          _expandedWorkoutIds.remove(currentWorkout.workoutId);
+        }
+      });
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: isStrength ? toggleExpanded : null,
+      child: _BaseCard(
+        friend: widget.friend,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                widget.workouts.length,
-                (index) => AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  width: index == _page ? 8 : 6,
-                  height: index == _page ? 8 : 6,
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  decoration: BoxDecoration(
-                    color: index == _page
-                        ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context).colorScheme.outline,
-                    shape: BoxShape.circle,
+              children: [
+                const _DefaultProfile(),
+                const SizedBox(width: 16),
+                Expanded(child: _FriendIdentity(friend: widget.friend)),
+                _pill(
+                  '오늘 ${widget.workouts.length}회',
+                  Theme.of(context).colorScheme.primary,
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Divider(height: 1, color: Theme.of(context).colorScheme.outline),
+            const SizedBox(height: 12),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              height: pageHeight,
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: widget.workouts.length,
+                onPageChanged: (value) => setState(() => _page = value),
+                itemBuilder: (context, index) => _CompletedWorkoutPage(
+                  key: ValueKey(widget.workouts[index].workoutId),
+                  workout: widget.workouts[index],
+                  isExpanded: _expandedWorkoutIds.contains(
+                    widget.workouts[index].workoutId,
                   ),
                 ),
               ),
             ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: isExpanded
+                  ? _StrengthExerciseDetails(
+                      key: ValueKey(currentWorkout.workoutId),
+                      exercises:
+                          currentWorkout.strengthSummary?.exercises ?? const [],
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            if (widget.workouts.length > 1) ...[
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  widget.workouts.length,
+                  (index) => AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: index == _page ? 8 : 6,
+                    height: index == _page ? 8 : 6,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    decoration: BoxDecoration(
+                      color: index == _page
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.outline,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
 }
 
 class _CompletedWorkoutPage extends StatelessWidget {
-  const _CompletedWorkoutPage({super.key, required this.workout});
+  const _CompletedWorkoutPage({
+    super.key,
+    required this.workout,
+    required this.isExpanded,
+  });
 
   final PublicWorkoutActivity workout;
+  final bool isExpanded;
 
   @override
   Widget build(BuildContext context) {
@@ -440,9 +553,28 @@ class _CompletedWorkoutPage extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '$title · ${_duration(workout.durationSeconds)}',
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '$title · ${_duration(workout.durationSeconds)}',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            if (!isRunning)
+              AnimatedRotation(
+                turns: isExpanded ? 0.5 : 0,
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                child: Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 10),
         if (isRunning) ...[
@@ -459,6 +591,100 @@ class _CompletedWorkoutPage extends StatelessWidget {
           const SizedBox(height: 8),
           _Photo(url: photoUrl, large: true),
         ],
+      ],
+    );
+  }
+}
+
+class _StrengthExerciseDetails extends StatelessWidget {
+  const _StrengthExerciseDetails({super.key, required this.exercises});
+
+  final List<PublicStrengthExercise> exercises;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final visibleExercises = exercises
+        .where(
+          (exercise) => exercise.name.isNotEmpty && exercise.sets.isNotEmpty,
+        )
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 4),
+        Divider(height: 1, color: colors.outline),
+        const SizedBox(height: 16),
+        if (visibleExercises.isEmpty)
+          Text(
+            '상세 세트 기록이 없어요.',
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          )
+        else
+          for (
+            var exerciseIndex = 0;
+            exerciseIndex < visibleExercises.length;
+            exerciseIndex++
+          ) ...[
+            if (exerciseIndex > 0) ...[
+              const SizedBox(height: 14),
+              Divider(height: 1, color: colors.outlineVariant),
+              const SizedBox(height: 14),
+            ],
+            Text(
+              visibleExercises[exerciseIndex].name,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 10),
+            _setRow(context, '세트', '무게', '횟수', isHeader: true),
+            const SizedBox(height: 6),
+            for (
+              var setIndex = 0;
+              setIndex < visibleExercises[exerciseIndex].sets.length;
+              setIndex++
+            )
+              Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: _setRow(
+                  context,
+                  '${setIndex + 1}세트',
+                  '${_number(visibleExercises[exerciseIndex].sets[setIndex].weightKg)}kg',
+                  '${visibleExercises[exerciseIndex].sets[setIndex].reps}회',
+                ),
+              ),
+          ],
+        const SizedBox(height: 4),
+      ],
+    );
+  }
+
+  Widget _setRow(
+    BuildContext context,
+    String set,
+    String weight,
+    String reps, {
+    bool isHeader = false,
+  }) {
+    final style = TextStyle(
+      color: isHeader
+          ? Theme.of(context).colorScheme.onSurfaceVariant
+          : Theme.of(context).colorScheme.onSurface,
+      fontSize: isHeader ? 12 : 13,
+      fontWeight: isHeader ? FontWeight.w600 : FontWeight.w700,
+    );
+    return Row(
+      children: [
+        Expanded(child: Text(set, style: style)),
+        Expanded(
+          child: Text(weight, textAlign: TextAlign.center, style: style),
+        ),
+        Expanded(
+          child: Text(reps, textAlign: TextAlign.end, style: style),
+        ),
       ],
     );
   }
@@ -497,7 +723,7 @@ class _RestingFriendCard extends StatelessWidget {
           child: FilledButton(
             onPressed: isSending ? null : onWakeUp,
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFFF5A76),
+              backgroundColor: Theme.of(context).colorScheme.primary,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(100),
               ),
@@ -537,7 +763,7 @@ class _BaseCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: profilePalette.border),
       ),
       child: child,
@@ -596,10 +822,11 @@ class _EmptyHomeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     width: double.infinity,
+    margin: const EdgeInsets.only(bottom: 14),
     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
     decoration: BoxDecoration(
       color: Theme.of(context).colorScheme.surfaceContainer,
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(20),
     ),
     child: Text(
       message,

@@ -37,6 +37,11 @@ class AppNavigationController extends ChangeNotifier {
     return value;
   }
 
+  void requestMainTab(int index) {
+    _requestedMainTab = index;
+    notifyListeners();
+  }
+
   void handleNotificationData(Map<String, dynamic> data) {
     switch (SocialNotificationType.fromValue(data['type'] as String?)) {
       case SocialNotificationType.friendRequest:
