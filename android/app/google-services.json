@@ -12,7 +12,20 @@
           "package_name": "com.sharefit.app.sharefit"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "82645132236-u8lb2mei7086jkb94t67uql2cmru8d7h.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.sharefit.app.sharefit",
+            "certificate_hash": "030d4081e65a8cca837b57d8bd11fb7036ded50f"
+          }
+        },
+        {
+          "client_id": "82645132236-pqgrf9h2gb6cfnbcrdmoepq8kktcdc98.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAoGyR-b69LbT6_-EI3XCabSPPvXiTeLDE"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "82645132236-pqgrf9h2gb6cfnbcrdmoepq8kktcdc98.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "82645132236-gqrpi85p9kdj0q40o2sbchcqlkes8p3g.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.sharefit.app.sharefit"
+              }
+            }
+          ]
         }
       }
     }

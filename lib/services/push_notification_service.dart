@@ -10,6 +10,7 @@ import '../navigation/app_navigation_controller.dart';
 import 'fcm_token_service.dart';
 
 const socialNotificationChannelId = 'sharefit_social_notifications';
+const androidNotificationIcon = 'ic_stat_sharefit';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -44,7 +45,7 @@ class PushNotificationService {
 
     await _localNotifications.initialize(
       settings: const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        android: AndroidInitializationSettings(androidNotificationIcon),
         iOS: DarwinInitializationSettings(),
       ),
       onDidReceiveNotificationResponse: (response) {
@@ -88,6 +89,7 @@ class PushNotificationService {
           socialNotificationChannelId,
           '친구 알림',
           channelDescription: '깨우기와 친구 요청 및 수락 알림',
+          icon: androidNotificationIcon,
           importance: Importance.high,
           priority: Priority.high,
         ),

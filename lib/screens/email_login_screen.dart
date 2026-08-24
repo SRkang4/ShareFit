@@ -1,10 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:top_snackbar_flutter/custom_snack_bar.dart';
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
 
 import '../services/auth_service.dart';
 import 'main_screen.dart';
+import 'signup_screen.dart';
 
 class EmailLoginScreen extends StatefulWidget {
   const EmailLoginScreen({super.key});
@@ -326,6 +326,41 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                         ),
 
                         const Spacer(),
+
+                        SizedBox(
+                          width: double.infinity,
+                          height: 58,
+                          child: OutlinedButton(
+                            onPressed: _isLoading
+                                ? null
+                                : () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            const SignupScreen(),
+                                      ),
+                                    );
+                                  },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: colors.onSurface,
+                              side: BorderSide(color: colors.outline),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(22),
+                              ),
+                            ),
+                            child: const Text(
+                              '회원가입',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
 
                         SizedBox(
                           width: double.infinity,

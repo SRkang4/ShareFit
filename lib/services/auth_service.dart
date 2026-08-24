@@ -2,28 +2,96 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/profile_customization.dart';
+import '../utils/auth_profile_defaults.dart';
 import 'fcm_token_service.dart';
+import 'google_auth_client.dart';
 
 class AuthService {
   AuthService({
     FirebaseAuth? firebaseAuth,
     FirebaseFirestore? firestore,
     Random? random,
+    GoogleAuthClient? googleAuthClient,
   }) : _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance,
        _firestore = firestore ?? FirebaseFirestore.instance,
-       _random = random ?? Random.secure();
+       _random = random ?? Random.secure(),
+       _googleAuthClient = googleAuthClient ?? DefaultGoogleAuthClient();
 
   final FirebaseAuth _firebaseAuth;
   final FirebaseFirestore _firestore;
   final Random _random;
+  final GoogleAuthClient _googleAuthClient;
 
   Future<void> signIn({required String email, required String password}) async {
     await _firebaseAuth.signInWithEmailAndPassword(
       email: email,
       password: password,
     );
+  }
+
+  Future<GoogleSignInOutcome> signInWithGoogle() {
+    return GoogleAuthFlow(_googleAuthClient).run((identity) async {
+      User? authenticatedUser;
+      try {
+        final credential = GoogleAuthProvider.credential(
+          idToken: identity.idToken,
+        );
+        final userCredential = await _firebaseAuth.signInWithCredential(
+          credential,
+        );
+        authenticatedUser = userCredential.user;
+        if (authenticatedUser == null) {
+          throw FirebaseAuthException(
+            code: 'google-user-not-found',
+            message: 'Google 로그인 결과에 사용자 정보가 없습니다.',
+          );
+        }
+
+        await ensureCurrentUserProfile(
+          providerEmail: identity.email,
+          providerDisplayName: identity.displayName,
+        );
+      } catch (error, stackTrace) {
+        if (authenticatedUser != null) {
+          try {
+            await _firebaseAuth.signOut();
+          } catch (_) {
+            // Preserve the profile/bootstrap failure.
+          }
+          try {
+            await _googleAuthClient.signOut();
+          } catch (_) {
+            // The next login still retries the idempotent profile bootstrap.
+          }
+        }
+        Error.throwWithStackTrace(error, stackTrace);
+      }
+    });
+  }
+
+  Future<void> ensureCurrentUserProfile({
+    String? providerEmail,
+    String? providerDisplayName,
+  }) async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'user-not-found',
+        message: '현재 로그인한 사용자가 없습니다.',
+      );
+    }
+    final email = AuthProfileDefaults.email(
+      firebaseEmail: user.email,
+      providerEmail: providerEmail,
+    );
+    final name = AuthProfileDefaults.name(
+      displayName: user.displayName ?? providerDisplayName,
+      email: email,
+    );
+    await _createUserDocuments(uid: user.uid, email: email, name: name);
   }
 
   Future<void> signUp({
@@ -77,6 +145,10 @@ class AuthService {
       final profileRef = _firestore.collection('publicProfiles').doc(uid);
 
       final created = await _firestore.runTransaction((transaction) async {
+        final userDocument = await transaction.get(userRef);
+        if (userDocument.exists) {
+          return true;
+        }
         final codeDocument = await transaction.get(codeRef);
         if (codeDocument.exists) {
           return false;
@@ -172,6 +244,11 @@ class AuthService {
   Future<void> signOut() async {
     await FcmTokenService().unregisterCurrentToken();
     await _firebaseAuth.signOut();
+    try {
+      await _googleAuthClient.signOut();
+    } catch (error, stackTrace) {
+      debugPrint('[AuthService] Google signOut 정리 실패: $error\n$stackTrace');
+    }
   }
 
   Future<void> deleteAccount() async {
