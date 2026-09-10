@@ -40,7 +40,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
       selectedTab = '친구 요청';
     }
     AppNavigationController.instance.addListener(_handleNavigationRequest);
-    debugPrint('[FriendsScreen] initState: migrateCurrentUser 호출');
     _migration = _friendService.migrateCurrentUser();
     _currentUserData = _authService.getCurrentUserData();
   }

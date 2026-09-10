@@ -125,7 +125,6 @@ class WorkoutService {
     required DateTime photoCreatedAt,
     required DateTime photoExpiresAt,
   }) async {
-    debugPrint('[WorkoutService][$workoutId] updateWorkoutPhoto 함수 진입');
     final user = _firebaseAuth.currentUser;
     if (user == null) {
       throw FirebaseAuthException(
@@ -142,16 +141,10 @@ class WorkoutService {
     final activityRef = _firestore.collection('publicActivity').doc(user.uid);
 
     try {
-      debugPrint('[WorkoutService][$workoutId] Firestore transaction 시작');
       final previousPhotoUrl = await _firestore.runTransaction((
         transaction,
       ) async {
-        debugPrint('[WorkoutService][$workoutId] workout 문서 조회 시작');
         final workoutDocument = await transaction.get(workoutRef);
-        debugPrint(
-          '[WorkoutService][$workoutId] workout 문서 조회 완료: '
-          'exists=${workoutDocument.exists}',
-        );
         if (!workoutDocument.exists) {
           throw StateError('운동 기록을 찾을 수 없습니다.');
         }
@@ -161,12 +154,7 @@ class WorkoutService {
           throw StateError('수정할 수 없는 운동 기록입니다.');
         }
 
-        debugPrint('[WorkoutService][$workoutId] publicActivity 문서 조회 시작');
         final activityDocument = await transaction.get(activityRef);
-        debugPrint(
-          '[WorkoutService][$workoutId] publicActivity 문서 조회 완료: '
-          'exists=${activityDocument.exists}',
-        );
         final previousPhotoUrl = workoutData['photoUrl'] is String
             ? workoutData['photoUrl'] as String
             : null;
@@ -220,7 +208,6 @@ class WorkoutService {
 
         return previousPhotoUrl;
       });
-      debugPrint('[WorkoutService][$workoutId] Firestore transaction 완료');
       return previousPhotoUrl;
     } catch (e, stackTrace) {
       if (e is FirebaseException) {

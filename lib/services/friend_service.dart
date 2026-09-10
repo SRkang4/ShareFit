@@ -52,12 +52,9 @@ class FriendService {
 
   Future<void> migrateCurrentUser() async {
     final uid = _uid;
-    debugPrint('[FriendMigration] 시작 uid=$uid');
     try {
       final userRef = _firestore.collection('users').doc(uid);
-      debugPrint('[FriendMigration][users] 조회 시작 path=users/$uid');
       final user = await userRef.get();
-      debugPrint('[FriendMigration][users] 조회 성공 exists=${user.exists}');
       final data = user.data();
       if (data == null) {
         throw const FriendServiceException(
@@ -79,23 +76,9 @@ class FriendService {
       final codeRef = _firestore.collection('friendCodes').doc(code);
       final profileRef = _firestore.collection('publicProfiles').doc(uid);
       final needsFriendCount = data['friendCount'] is! int;
-      var createdFriendCode = false;
-
-      debugPrint(
-        '[FriendMigration][friendCount] 확인 성공 needsUpdate=$needsFriendCount',
-      );
-      debugPrint('[FriendMigration][friendCodes] 확인 시작 path=friendCodes/$code');
-      debugPrint(
-        '[FriendMigration][publicProfiles] 확인/생성 시작 '
-        'path=publicProfiles/$uid mode=merge',
-      );
 
       await _firestore.runTransaction((transaction) async {
         final codeDocument = await transaction.get(codeRef);
-        debugPrint(
-          '[FriendMigration][friendCodes] 확인 성공 '
-          'exists=${codeDocument.exists}',
-        );
         if (codeDocument.exists && codeDocument.data()?['uid'] != uid) {
           throw const FriendServiceException(
             'friend-code-conflict',
@@ -104,15 +87,12 @@ class FriendService {
         }
 
         if (!codeDocument.exists) {
-          debugPrint('[FriendMigration][friendCodes] 생성 예약');
-          createdFriendCode = true;
           transaction.set(codeRef, {
             'uid': uid,
             'active': true,
             'createdAt': FieldValue.serverTimestamp(),
           });
         }
-        debugPrint('[FriendMigration][publicProfiles] 생성/보완 예약');
         transaction.set(profileRef, {
           'uid': uid,
           'name': name,
@@ -124,19 +104,9 @@ class FriendService {
           'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
         if (needsFriendCount) {
-          debugPrint('[FriendMigration][friendCount] 보완 예약 value=0');
           transaction.update(userRef, {'friendCount': 0});
         }
       });
-
-      debugPrint(
-        '[FriendMigration][friendCount] 처리 성공 updated=$needsFriendCount',
-      );
-      debugPrint(
-        '[FriendMigration][friendCodes] 처리 성공 created=$createdFriendCode',
-      );
-      debugPrint('[FriendMigration][publicProfiles] 처리 성공');
-      debugPrint('[FriendMigration] 전체 성공 uid=$uid');
     } on FirebaseException catch (error, stackTrace) {
       debugPrint(
         '[FriendMigration] FirebaseException 실패 '

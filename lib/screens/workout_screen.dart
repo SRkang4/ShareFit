@@ -115,7 +115,6 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   Future<bool> _canStartPhotoUpload(String workoutId) async {
     final userData = await authService.getCurrentUserData();
     final isPro = userData?['isPro'] == true;
-    debugPrint('[WorkoutPhoto][$workoutId] 업로드 전 isPro=$isPro');
     if (isPro) return true;
 
     final todayWorkouts = await workoutService.getTodayWorkouts();
@@ -128,7 +127,6 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     }
 
     if (targetWorkout != null && _hasWorkoutPhoto(targetWorkout)) {
-      debugPrint('[WorkoutPhoto][$workoutId] 기존 사진 교체이므로 Free 제한 제외');
       return true;
     }
 
@@ -139,11 +137,6 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       (uploadingId) => uploadingId != workoutId,
     );
     final canUpload = !hasAnotherPhoto && !hasAnotherUpload;
-    debugPrint(
-      '[WorkoutPhoto][$workoutId] Free 업로드 검사: '
-      'hasAnotherPhoto=$hasAnotherPhoto, '
-      'hasAnotherUpload=$hasAnotherUpload, canUpload=$canUpload',
-    );
     return canUpload;
   }
 
@@ -810,53 +803,24 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   }
 
   Future<void> pickWorkoutImage(String workoutId) async {
-    debugPrint('[WorkoutPhoto][$workoutId] 인증사진 버튼 클릭');
     if (uploadingPhotoWorkoutIds.contains(workoutId)) {
-      debugPrint(
-        '[WorkoutPhoto][$workoutId] 중복 업로드 방지 조건 진입: '
-        '이미 처리 중이므로 반환',
-      );
       return;
     }
     uploadingPhotoWorkoutIds.add(workoutId);
-    debugPrint(
-      '[WorkoutPhoto][$workoutId] 처리 상태 등록 완료: '
-      'contains=${uploadingPhotoWorkoutIds.contains(workoutId)}',
-    );
     final picker = ImagePicker();
     String? uploadedUrl;
 
     try {
-      debugPrint('[WorkoutPhoto][$workoutId] Free/Pro 업로드 제한 재검사 시작');
       final canUpload = await _canStartPhotoUpload(workoutId);
-      debugPrint(
-        '[WorkoutPhoto][$workoutId] Free/Pro 업로드 제한 재검사 완료: '
-        'canUpload=$canUpload',
-      );
       if (!canUpload) return;
 
-      debugPrint('[WorkoutPhoto][$workoutId] ImagePicker 카메라 실행 직전');
       final pickedImage = await picker.pickImage(
         source: ImageSource.camera,
         imageQuality: 80,
       );
-      debugPrint(
-        '[WorkoutPhoto][$workoutId] XFile 반환 여부: '
-        '${pickedImage == null ? 'null(촬영 취소)' : '반환됨'}',
-      );
       if (pickedImage == null) return;
-      debugPrint(
-        '[WorkoutPhoto][$workoutId] pickedImage.path=${pickedImage.path}',
-      );
 
       final imageFile = File(pickedImage.path);
-      final fileExists = await imageFile.exists();
-      debugPrint('[WorkoutPhoto][$workoutId] File.exists()=$fileExists');
-      if (fileExists) {
-        final fileLength = await imageFile.length();
-        debugPrint('[WorkoutPhoto][$workoutId] 파일 크기=$fileLength bytes');
-      }
-      debugPrint('[WorkoutPhoto][$workoutId] Storage 업로드 함수 호출 직전');
       final uploadResult = await workoutPhotoService.uploadCompletionPhoto(
         workoutId: workoutId,
         image: imageFile,
@@ -864,27 +828,15 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       uploadedUrl = uploadResult.downloadUrl;
       final photoCreatedAt = uploadResult.createdAt;
       final photoExpiresAt = photoCreatedAt.add(const Duration(days: 30));
-      debugPrint(
-        '[WorkoutPhoto][$workoutId] Storage 업로드 함수 완료: '
-        'downloadUrl=$uploadedUrl, photoCreatedAt=$photoCreatedAt, '
-        'photoExpiresAt=$photoExpiresAt',
-      );
-      debugPrint('[WorkoutPhoto][$workoutId] Firestore updateWorkoutPhoto 시작');
       final previousPhotoUrl = await workoutService.updateWorkoutPhoto(
         workoutId: workoutId,
         photoUrl: uploadedUrl,
         photoCreatedAt: photoCreatedAt,
         photoExpiresAt: photoExpiresAt,
       );
-      debugPrint(
-        '[WorkoutPhoto][$workoutId] Firestore updateWorkoutPhoto 완료: '
-        'previousPhotoUrl=$previousPhotoUrl',
-      );
       if (previousPhotoUrl != null && previousPhotoUrl != uploadedUrl) {
         try {
-          debugPrint('[WorkoutPhoto][$workoutId] 이전 Storage 사진 삭제 시작');
           await workoutPhotoService.deleteByDownloadUrl(previousPhotoUrl);
-          debugPrint('[WorkoutPhoto][$workoutId] 이전 Storage 사진 삭제 완료');
         } catch (e, stackTrace) {
           debugPrint('[WorkoutPhoto][$workoutId] 이전 Storage 사진 삭제 실패: $e');
           debugPrintStack(stackTrace: stackTrace);
@@ -894,14 +846,11 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       }
 
       if (!mounted) {
-        debugPrint('[WorkoutPhoto][$workoutId] UI setState 생략: mounted=false');
         return;
       }
-      debugPrint('[WorkoutPhoto][$workoutId] UI setState 직전');
       setState(() {
         workoutImages[workoutId] = imageFile;
       });
-      debugPrint('[WorkoutPhoto][$workoutId] UI setState 완료');
     } catch (e, stackTrace) {
       if (e is FirebaseException) {
         debugPrint(
@@ -913,9 +862,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       debugPrintStack(stackTrace: stackTrace);
       if (uploadedUrl != null) {
         try {
-          debugPrint('[WorkoutPhoto][$workoutId] 실패 후 업로드 파일 정리 시작');
           await workoutPhotoService.deleteByDownloadUrl(uploadedUrl);
-          debugPrint('[WorkoutPhoto][$workoutId] 실패 후 업로드 파일 정리 완료');
         } catch (cleanupError, cleanupStackTrace) {
           if (cleanupError is FirebaseException) {
             debugPrint(
@@ -936,13 +883,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         _showError('인증 사진을 저장하지 못했습니다. 다시 시도해주세요.');
       }
     } finally {
-      debugPrint('[WorkoutPhoto][$workoutId] finally 진입');
-      final removed = uploadingPhotoWorkoutIds.remove(workoutId);
-      debugPrint(
-        '[WorkoutPhoto][$workoutId] 처리 상태 제거 결과: '
-        'removed=$removed, '
-        'contains=${uploadingPhotoWorkoutIds.contains(workoutId)}',
-      );
+      uploadingPhotoWorkoutIds.remove(workoutId);
     }
   }
 

@@ -27,7 +27,6 @@ class WorkoutPhotoService {
     required String workoutId,
     required File image,
   }) async {
-    debugPrint('[WorkoutPhotoService][$workoutId] Storage 업로드 함수 진입');
     final user = _auth.currentUser;
     if (user == null) {
       throw FirebaseAuthException(
@@ -42,14 +41,9 @@ class WorkoutPhotoService {
     final reference = _storage.ref(
       'users/${user.uid}/workouts/$workoutId/completion_$version.$extension',
     );
-    debugPrint(
-      '[WorkoutPhotoService][$workoutId] Storage reference.fullPath='
-      '${reference.fullPath}',
-    );
 
     StreamSubscription<TaskSnapshot>? snapshotSubscription;
     try {
-      debugPrint('[WorkoutPhotoService][$workoutId] putFile 시작');
       final uploadTask = reference.putFile(
         image,
         SettableMetadata(
@@ -58,14 +52,7 @@ class WorkoutPhotoService {
         ),
       );
       snapshotSubscription = uploadTask.snapshotEvents.listen(
-        (snapshot) {
-          debugPrint(
-            '[WorkoutPhotoService][$workoutId] 업로드 상태 변화: '
-            'state=${snapshot.state.name}, '
-            'bytesTransferred=${snapshot.bytesTransferred}, '
-            'totalBytes=${snapshot.totalBytes}',
-          );
-        },
+        (_) {},
         onError: (Object error, StackTrace stackTrace) {
           if (error is FirebaseException) {
             debugPrint(
@@ -82,31 +69,15 @@ class WorkoutPhotoService {
       );
 
       final snapshot = await uploadTask;
-      debugPrint(
-        '[WorkoutPhotoService][$workoutId] putFile 완료: '
-        'state=${snapshot.state.name}, '
-        'bytesTransferred=${snapshot.bytesTransferred}, '
-        'totalBytes=${snapshot.totalBytes}',
-      );
       var createdAt = snapshot.metadata?.timeCreated;
       if (createdAt == null) {
-        debugPrint('[WorkoutPhotoService][$workoutId] 객체 생성 시각 조회 시작');
         final metadata = await reference.getMetadata();
         createdAt = metadata.timeCreated;
-        debugPrint(
-          '[WorkoutPhotoService][$workoutId] 객체 생성 시각 조회 완료: '
-          '$createdAt',
-        );
       }
       if (createdAt == null) {
         throw StateError('업로드된 사진의 서버 생성 시각을 확인할 수 없습니다.');
       }
-      debugPrint('[WorkoutPhotoService][$workoutId] getDownloadURL 시작');
       final downloadUrl = await reference.getDownloadURL();
-      debugPrint(
-        '[WorkoutPhotoService][$workoutId] getDownloadURL 완료: '
-        '$downloadUrl',
-      );
       return WorkoutPhotoUploadResult(
         downloadUrl: downloadUrl,
         createdAt: createdAt.toUtc(),
@@ -122,9 +93,7 @@ class WorkoutPhotoService {
       debugPrintStack(stackTrace: stackTrace);
       rethrow;
     } finally {
-      debugPrint('[WorkoutPhotoService][$workoutId] snapshotEvents 구독 해제 시작');
       await snapshotSubscription?.cancel();
-      debugPrint('[WorkoutPhotoService][$workoutId] snapshotEvents 구독 해제 완료');
     }
   }
 
