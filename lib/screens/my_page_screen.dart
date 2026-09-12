@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
 
 import '../models/advanced_stats.dart';
+import '../config/feature_flags.dart';
 import '../models/profile_customization.dart';
 import '../models/workout_record.dart';
 import '../services/advanced_stats_service.dart';
@@ -20,6 +21,7 @@ import '../utils/experience_formatter.dart';
 import '../widgets/sharefit_sliding_segmented_control.dart';
 import '../widgets/workout_history_card.dart';
 import '../widgets/sharefit_ui.dart';
+import 'pro_purchase_screen.dart';
 import 'settings_screen.dart';
 
 class MyPageScreen extends StatefulWidget {
@@ -186,12 +188,12 @@ class _MyPageScreenState extends State<MyPageScreen> {
 
                 _buildWorkoutCalendarCard(workouts),
 
-                if (!isLoadingProfile && isPro) ...[
+                if (!isLoadingProfile && hasClientProAccess(isPro)) ...[
                   const SizedBox(height: 18),
                   _buildAdvancedStatsCard(),
                 ],
 
-                if (!isLoadingProfile && !isPro) ...[
+                if (proSubscriptionEnabled && !isLoadingProfile && !isPro) ...[
                   const SizedBox(height: 18),
                   _buildProCard(),
                 ],
@@ -1435,53 +1437,71 @@ class _MyPageScreenState extends State<MyPageScreen> {
   }
 
   Widget _buildProCard() {
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: pointColor,
-        borderRadius: BorderRadius.circular(28),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'ShareFit Pro',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            '친구 제한 해제\n인증 사진 무제한\n운동 기록 분석과 특별 기능 제공',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.white,
-              height: 1.4,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Container(
-            height: 46,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              '업그레이드',
+    return GestureDetector(
+      onTap: _openProPurchase,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: pointColor,
+          borderRadius: BorderRadius.circular(28),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'ShareFit Pro',
               style: TextStyle(
-                color: pointColor,
-                fontSize: 15,
+                fontSize: 22,
                 fontWeight: FontWeight.w900,
+                color: Colors.white,
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            const Text(
+              '친구 제한 해제\n인증 사진 무제한\n운동 기록 분석과 특별 기능 제공',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.white,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Container(
+              height: 46,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                '업그레이드',
+                style: TextStyle(
+                  color: pointColor,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _openProPurchase() async {
+    if (!proSubscriptionEnabled) return;
+    final upgraded = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ProPurchaseScreen(currentlyPro: isPro),
+      ),
+    );
+    if (!mounted || upgraded != true) return;
+    setState(() {
+      isPro = true;
+    });
   }
 
   @override

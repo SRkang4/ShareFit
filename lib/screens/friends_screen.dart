@@ -395,6 +395,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
         return FutureBuilder<Map<String, dynamic>?>(
           future: _currentUserData,
           builder: (context, userSnapshot) {
+            // Server-enforced limit: classroom mode cannot bypass Firestore Rules.
             final isPro = userSnapshot.data?['isPro'] == true;
             final ready =
                 migrationSnapshot.connectionState == ConnectionState.done &&
@@ -581,7 +582,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
               borderRadius: BorderRadius.circular(22),
             ),
             child: const Text(
-              '무료 버전은 친구 5명까지 추가할 수 있어요.',
+              '현재 계정은 친구를 5명까지 추가할 수 있어요. 서버의 친구 수 제한이 적용됩니다.',
               style: TextStyle(
                 color: Color(0xFFFF5A76),
                 fontWeight: FontWeight.w800,

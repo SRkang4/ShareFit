@@ -2,6 +2,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'services/auth_service.dart';
+import 'config/feature_flags.dart';
+import 'services/pro_purchase_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_screen.dart';
 import 'theme/app_theme.dart';
@@ -63,11 +65,18 @@ class _AuthenticatedHome extends StatefulWidget {
 
 class _AuthenticatedHomeState extends State<_AuthenticatedHome> {
   final AuthService _authService = AuthService();
-  late Future<void> _profileReady = _authService.ensureCurrentUserProfile();
+  late Future<void> _profileReady = _prepareAuthenticatedHome();
+
+  Future<void> _prepareAuthenticatedHome() async {
+    await _authService.ensureCurrentUserProfile();
+    if (proSubscriptionEnabled) {
+      await ProPurchaseService.instance.initialize(syncEntitlement: true);
+    }
+  }
 
   void _retry() {
     setState(() {
-      _profileReady = _authService.ensureCurrentUserProfile();
+      _profileReady = _prepareAuthenticatedHome();
     });
   }
 

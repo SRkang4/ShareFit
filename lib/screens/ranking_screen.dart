@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/ranking_entry.dart';
+import '../config/feature_flags.dart';
 import '../services/auth_service.dart';
 import '../services/ranking_service.dart';
 import '../theme/app_theme.dart';
@@ -25,9 +26,11 @@ class _RankingScreenState extends State<RankingScreen> {
   @override
   void initState() {
     super.initState();
-    isProFuture = authService.getCurrentUserData().then(
-      (userData) => userData?['isPro'] == true,
-    );
+    isProFuture = !proSubscriptionEnabled
+        ? Future.value(true)
+        : authService.getCurrentUserData().then(
+            (userData) => userData?['isPro'] == true,
+          );
   }
 
   @override

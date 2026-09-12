@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
 
 import '../data/exercise_catalog.dart';
+import '../config/feature_flags.dart';
 import '../controllers/workout_session_controller.dart';
 import '../models/workout_record.dart';
 import '../services/auth_service.dart';
@@ -104,6 +105,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   }
 
   Future<bool> _loadIsPro() async {
+    if (!proSubscriptionEnabled) return true;
     final userData = await authService.getCurrentUserData();
     return userData?['isPro'] == true;
   }
@@ -113,6 +115,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   }
 
   Future<bool> _canStartPhotoUpload(String workoutId) async {
+    if (!proSubscriptionEnabled) return true;
     final userData = await authService.getCurrentUserData();
     final isPro = userData?['isPro'] == true;
     if (isPro) return true;

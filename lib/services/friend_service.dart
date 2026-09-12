@@ -292,7 +292,7 @@ class FriendService {
           error.code == 'failed-precondition') {
         throw const FriendServiceException(
           'accept-not-allowed',
-          '요청 상태 또는 친구 수 제한을 확인해주세요.',
+          '친구 요청 상태 또는 서버의 친구 수 제한으로 수락할 수 없어요. 나와 상대방의 친구 수를 확인해주세요.',
         );
       }
       rethrow;

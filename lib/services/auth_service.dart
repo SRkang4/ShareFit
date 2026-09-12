@@ -25,6 +25,9 @@ class AuthService {
   final Random _random;
   final GoogleAuthClient _googleAuthClient;
 
+  bool get hasCurrentUser => _firebaseAuth.currentUser != null;
+  String? get currentUserId => _firebaseAuth.currentUser?.uid;
+
   Future<void> signIn({required String email, required String password}) async {
     await _firebaseAuth.signInWithEmailAndPassword(
       email: email,
@@ -194,6 +197,55 @@ class AuthService {
 
     final snapshot = await _firestore.collection('users').doc(user.uid).get();
     return snapshot.data();
+  }
+
+  Future<void> updateCurrentUserAppleSubscription({
+    required bool active,
+    required String productId,
+    String? purchaseId,
+    String? transactionDate,
+    required String verificationSource,
+  }) async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'user-not-found',
+        message: '현재 로그인한 사용자가 없습니다.',
+      );
+    }
+    await _firestore.collection('users').doc(user.uid).update({
+      'isPro': active,
+      'proSubscription': {
+        'active': active,
+        'platform': 'ios',
+        'source': 'apple_store',
+        'productId': productId,
+        'purchaseId': purchaseId,
+        'transactionDate': transactionDate,
+        'verificationSource': verificationSource,
+        'verificationMode': 'local_storekit_test',
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+    });
+  }
+
+  Future<void> deactivateExpiredAppleSubscription() async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) return;
+    final reference = _firestore.collection('users').doc(user.uid);
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(reference);
+      final subscription = snapshot.data()?['proSubscription'];
+      if (subscription is! Map || subscription['source'] != 'apple_store') {
+        return;
+      }
+      transaction.update(reference, {
+        'isPro': false,
+        'proSubscription.active': false,
+        'proSubscription.verificationMode': 'local_storekit_test',
+        'proSubscription.updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
   }
 
   Future<void> updateCurrentUserProfile({

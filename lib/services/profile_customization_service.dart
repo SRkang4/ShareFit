@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/profile_customization.dart';
+import '../config/feature_flags.dart';
 
 class ProfileCustomizationException implements Exception {
   const ProfileCustomizationException(this.message);
@@ -37,8 +38,13 @@ class ProfileCustomizationService {
     if (!userDocument.exists) {
       throw const ProfileCustomizationException('사용자 정보를 찾을 수 없습니다.');
     }
+    // Unresolved in classroom mode: Rules require the actual stored entitlement.
     if (userDocument.data()?['isPro'] != true) {
-      throw const ProfileCustomizationException('Pro 사용자만 이용할 수 있어요.');
+      throw const ProfileCustomizationException(
+        proSubscriptionEnabled
+            ? 'Pro 사용자만 이용할 수 있어요.'
+            : '현재 계정은 서버 권한 제한으로 프로필 꾸미기를 저장할 수 없어요.',
+      );
     }
 
     final publicProfileRef = _firestore
@@ -53,6 +59,15 @@ class ProfileCustomizationService {
       'profileThemeId': customization.themeId,
       'updatedAt': FieldValue.serverTimestamp(),
     });
-    await batch.commit();
+    try {
+      await batch.commit();
+    } on FirebaseException catch (error) {
+      if (error.code == 'permission-denied') {
+        throw const ProfileCustomizationException(
+          '서버 권한 제한으로 프로필 꾸미기를 저장하지 못했어요. 결제 오류는 아닙니다.',
+        );
+      }
+      rethrow;
+    }
   }
 }
